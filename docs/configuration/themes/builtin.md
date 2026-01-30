@@ -53,3 +53,7 @@ Based on the article by Petroff https://doi.org/10.48550/arXiv.2107.02270.
 ## Rosé Pine Moon
 
 ![Surfer Rosé Pine Moon theme](theme_rose_pine_moon.png)
+
+## Rosé Pine Dawn
+
+![Surfer Rosé Pine Dawn theme](theme_rose_pine_dawn.png)
