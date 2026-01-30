@@ -47,6 +47,10 @@ static BUILTIN_THEMES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
         theme!("petroff-dark"),
         theme!("petroff-light"),
         ("Rosé Pine", include_str!("../../themes/rose-pine.toml")),
+        (
+            "Rosé Pine Moon",
+            include_str!("../../themes/rose-pine-moon.toml"),
+        ),
         theme!("solarized"),
     ])
 });
