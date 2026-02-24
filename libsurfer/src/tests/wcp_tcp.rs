@@ -250,7 +250,10 @@ fn start_stop() {
         tokio::time::sleep(Duration::from_millis(1000)).await;
         state.update(Message::StopWcpServer);
         tokio::time::sleep(Duration::from_millis(1000)).await;
-        if TcpStream::connect(format!("127.0.0.1:{port}")).await.is_ok() {
+        if TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .is_ok()
+        {
             panic!("Connected after stopping server");
         }
     });
