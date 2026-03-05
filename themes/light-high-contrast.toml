@@ -23,6 +23,8 @@ variable_weak = "303030" # custom grey
 waveform_opacity = 0.5
 cursor = { color="000000", width=3 } # fg-main
 gesture = { color="000000", width=2 } # fg-main
+annotation_rectangle = {color = "ffffff", width = 2}
+annotation_arrow = {color = "ffffff", width = 2}
 linewidth = 3
 alt_frequency = 0
 highlight_background = "DAE8FF"

@@ -15,6 +15,8 @@ variable_undefined = "46000c"
 # to make visible on a white background, so we'll make it blue
 variable_highimp = "000347"
 cursor = { color="b63935", width=2 }
+annotation_rectangle = {color = "cb4b16", width = 2}
+annotation_arrow = {color = "d33682", width = 2}
 linewidth = 2
 highlight_background = "0F3B37"
 

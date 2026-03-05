@@ -28,22 +28,24 @@ impl Direction {
         }
     }
 }
-
-#[derive(Serialize, Deserialize, Debug)]
+//TODO: added Clone to the following 3, will most like be unnecessary in future
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Anchor {
     Top,
     Center,
     Bottom,
+    Percentual,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GraphicsY {
     pub item: DisplayedItemRef,
     pub anchor: Anchor,
+    pub p: Option<f32>,
 }
 
 /// A point used to place graphics.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GrPoint {
     /// Timestamp at which to place the graphic
     pub x: BigInt,
@@ -64,12 +66,16 @@ pub enum Graphic {
         pos: (GrPoint, Direction),
         text: String,
     },
+    Rectangle {
+        from: GrPoint,
+        to: GrPoint,
+    },
 }
 
 impl WaveData {
     // FIXME: This function should probably not be here, we should instead update ItemDrawingInfo to
     // have this info
-    fn get_item_y(&self, y: &GraphicsY) -> Option<f32> {
+    pub fn get_item_y(&self, y: &GraphicsY) -> Option<f32> {
         self.items_tree
             .iter_visible()
             .zip(&self.drawing_infos)
@@ -77,9 +83,31 @@ impl WaveData {
             .map(|(_, info)| match y.anchor {
                 Anchor::Top => info.top(),
                 Anchor::Center => info.top() + (info.bottom() - info.top()) / 2.,
+                Anchor::Percentual => {
+                    info.top() + y.p.unwrap_or(0.0) * (info.bottom() - info.top())
+                }
                 Anchor::Bottom => info.bottom(),
             })
             .map(|point| point - self.top_item_draw_offset)
+    }
+
+    pub fn get_item_y_scale(&self, item: DisplayedItemRef, y: f32) -> Option<f32> {
+        let y = y + self.top_item_draw_offset;
+        self.items_tree
+            .iter_visible()
+            .zip(&self.drawing_infos)
+            .find(|(node, _info)| node.item_ref == item)
+            .map(|(_, info)| {
+                let p = (y - info.top()) / (info.bottom() - info.top());
+                println!(
+                    "y = {} top= {}, bottom = {}, p= {}",
+                    y,
+                    info.top(),
+                    info.bottom(),
+                    p
+                );
+                p
+            })
     }
 
     pub(crate) fn draw_graphics(
@@ -161,6 +189,33 @@ impl WaveData {
                             FontId::monospace(15.),
                             color,
                         );
+                    }
+                }
+                Graphic::Rectangle {
+                    from: from_point,
+                    to: to_point,
+                } => {
+                    let from_x = viewport.pixel_from_time(
+                        &from_point.x,
+                        ctx.cfg.canvas_size.x,
+                        &num_timestamps,
+                    );
+                    let from_y = self.get_item_y(&from_point.y);
+                    let to_x = viewport.pixel_from_time(
+                        &from_point.x,
+                        ctx.cfg.canvas_size.x,
+                        &num_timestamps,
+                    );
+                    let to_y = self.get_item_y(&to_point.y);
+
+                    if let (Some(from_y), Some(to_y)) = (from_y, to_y) {
+                        let start_pos = (ctx.to_screen)(from_x, from_y);
+                        let end_pos = (ctx.to_screen)(to_x, to_y);
+                        let temp_rect = emath::Rect::from_two_pos(start_pos, end_pos);
+                        let stroke: Stroke = Stroke { width: 3., color }.into();
+
+                        ctx.painter
+                            .rect_stroke(temp_rect, 0.0, stroke, egui::StrokeKind::Middle);
                     }
                 }
             }

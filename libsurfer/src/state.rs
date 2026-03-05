@@ -342,6 +342,7 @@ impl SystemState {
                             viewports,
                             cursor: None,
                             markers: HashMap::new(),
+                            rectangles: vec![],
                             focused_item: None,
                             focused_transaction: (None, None),
                             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -416,6 +417,7 @@ impl SystemState {
             viewports,
             cursor: None,
             markers: HashMap::new(),
+            rectangles: vec![],
             focused_item: None,
             focused_transaction: (None, None),
             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -587,6 +589,7 @@ impl SystemState {
             items_tree: waves.items_tree.clone(),
             displayed_items: waves.displayed_items.clone(),
             markers: waves.markers.clone(),
+            rectangles: waves.rectangles.clone(),
         }
     }
 

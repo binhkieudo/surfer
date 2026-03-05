@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use eyre::{Result, WrapErr as _};
 use num::bigint::ToBigInt as _;
+use num::iter::RangeInclusive;
 use num::{BigInt, BigUint, One, ToPrimitive, Zero};
 use serde::{Deserialize, Serialize};
 use surfer_translation_types::{TranslationPreference, Translator, VariableValue};
@@ -14,6 +15,7 @@ use crate::displayed_item::{
 };
 use crate::displayed_item_tree::{DisplayedItemTree, ItemIndex, TargetPosition, VisibleItemIndex};
 use crate::graphics::{Graphic, GraphicId};
+use crate::rectangle::RectAnnotation;
 use crate::transaction_container::{StreamScopeRef, TransactionRef, TransactionStreamRef};
 use crate::transactions::calculate_rows_of_stream;
 use crate::translation::{DynTranslator, TranslatorList, VariableInfoExt};
@@ -64,6 +66,7 @@ pub struct WaveData {
     pub viewports: Vec<Viewport>,
     pub cursor: Option<BigInt>,
     pub markers: HashMap<u8, BigInt>,
+    pub rectangles: Vec<RectAnnotation>,
     pub focused_item: Option<VisibleItemIndex>,
     pub focused_transaction: (Option<TransactionRef>, Option<Transaction>),
     pub default_variable_name_type: VariableNameType,
@@ -193,6 +196,7 @@ impl WaveData {
             viewports: self.viewports,
             cursor: self.cursor.clone(),
             markers: self.markers.clone(),
+            rectangles: self.rectangles.clone(),
             focused_item: self.focused_item,
             focused_transaction: self.focused_transaction,
             default_variable_name_type: self.default_variable_name_type,
@@ -504,6 +508,7 @@ impl WaveData {
     }
 
     /// Remove a single item, it's legal to call this function with an invalid ID
+    /// TODO: Remove annotations
     pub fn remove_displayed_item(&mut self, id: DisplayedItemRef) {
         let Some(idx) = self
             .items_tree
@@ -524,6 +529,16 @@ impl WaveData {
             if let Some(DisplayedItem::Marker(m)) = self.displayed_items.remove(&removed_ref) {
                 self.markers.remove(&m.idx);
             }
+
+            self.rectangles.retain(|item| {
+                item.wave_from
+                    .as_ref()
+                    .map_or(true, |from| from.item != removed_ref)
+                    && item
+                        .wave_to
+                        .as_ref()
+                        .map_or(true, |to| to.item != removed_ref)
+            });
         }
 
         self.focused_item = focused_item_ref.and_then(|focused_item_ref| {
@@ -855,6 +870,16 @@ impl WaveData {
             .enumerate()
             .find(|(_, di)| di.top() >= visible_top - 1.) // 1px margin for floating-point errors
             .map_or(self.drawing_infos.len() - 1, |(idx, _)| idx)
+    }
+
+    //Returns the y_value of the current visible items
+    //TODO: code duplication.
+    //TODO: Magic number.
+    pub fn get_content_height(&self, offset: f32) -> f32 {
+        let first_element_y = self.drawing_infos.first().unwrap().top();
+        let last_element_bottom = self.drawing_infos.last().unwrap().bottom();
+        let content_height = last_element_bottom - first_element_y + offset - 0.1;
+        content_height
     }
 
     /// Find the item at a given y-location.

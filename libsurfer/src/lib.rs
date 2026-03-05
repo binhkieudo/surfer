@@ -10,6 +10,7 @@ mod channels;
 pub mod clock_highlighting;
 pub mod command_parser;
 pub mod command_prompt;
+pub mod comment;
 pub mod config;
 pub mod cxxrtl;
 pub mod cxxrtl_container;
@@ -33,6 +34,7 @@ pub mod menus;
 pub mod message;
 pub mod mousegestures;
 pub mod overview;
+pub mod rectangle;
 pub mod remote;
 pub mod server_file_window;
 pub mod state;
@@ -67,9 +69,11 @@ pub mod wcp;
 pub mod wellen;
 
 use crate::channels::checked_send;
+use crate::comment::Comment;
 use crate::config::AutoLoad;
 use crate::displayed_item_tree::ItemIndex;
 use crate::displayed_item_tree::TargetPosition;
+use crate::rectangle::RectAnnotation;
 use crate::remote::get_time_table_from_server;
 use crate::variable_name_type::VariableNameType;
 
@@ -278,6 +282,7 @@ struct CanvasState {
     items_tree: DisplayedItemTree,
     displayed_items: HashMap<DisplayedItemRef, DisplayedItem>,
     markers: HashMap<u8, BigInt>,
+    rectangles: Vec<RectAnnotation>,
 }
 
 impl SystemState {
@@ -654,7 +659,7 @@ impl SystemState {
                     {
                         remove_ids.push(node.item_ref);
                     }
-                    for &item_ref in &remove_ids {
+                    for &item_ref in remove_ids.iter() {
                         waves.remove_displayed_item(item_ref);
                     }
                     waves.compute_variable_display_names();
@@ -1884,6 +1889,7 @@ impl SystemState {
                         waves.items_tree = prev_state.items_tree;
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
+                        waves.rectangles = prev_state.rectangles;
                     } else {
                         break;
                     }
@@ -1901,6 +1907,7 @@ impl SystemState {
                         waves.items_tree = prev_state.items_tree;
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
+                        waves.rectangles = prev_state.rectangles;
                     } else {
                         break;
                     }
@@ -2249,8 +2256,42 @@ impl SystemState {
             Message::ExpandDrawnItem { item, levels } => {
                 self.items_to_expand.borrow_mut().push((item, levels));
             }
+            Message::AddRectangle => {
+                if self.add_rectangle {
+                    self.add_rectangle = false;
+                } else {
+                    self.add_rectangle = true;
+                }
+            }
+            Message::RectangleAdded {
+                id,
+                time_at_start,
+                time_at_end,
+                wave_from,
+                wave_to,
+                rect,
+                color,
+                width,
+            } => {
+                let cool_id = egui::Id::new(("rectangle", self.next_id_source));
+                self.save_current_canvas(format!("Add rectangle {:?}", cool_id));
+                let waves = self.user.waves.as_mut()?;
+                waves.rectangles.push(RectAnnotation {
+                    id: cool_id,
+                    time_at_start,
+                    time_at_end,
+                    wave_from: wave_from,
+                    wave_to: wave_to,
+                    rect,
+                    color,
+                    width,
+                });
+
+                self.next_id_source += 1;
+            }
             Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
         }
+        
         Some(())
     }
 

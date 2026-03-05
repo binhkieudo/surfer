@@ -2553,6 +2553,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[0],
                         anchor: crate::graphics::Anchor::Top,
+                        p: None,
                     },
                 },
                 Direction::West,
@@ -2563,6 +2564,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[1],
                         anchor: crate::graphics::Anchor::Top,
+                        p: None,
                     },
                 },
                 Direction::East,
@@ -2579,6 +2581,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[0],
                         anchor: crate::graphics::Anchor::Top,
+                        p: None,
                     },
                 },
                 Direction::East,
@@ -2589,6 +2592,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[1],
                         anchor: crate::graphics::Anchor::Bottom,
+                        p: None,
                     },
                 },
                 Direction::West,
@@ -2605,6 +2609,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[0],
                         anchor: crate::graphics::Anchor::Top,
+                        p: None,
                     },
                 },
                 Direction::East,
@@ -2615,6 +2620,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[1],
                         anchor: crate::graphics::Anchor::Center,
+                        p: None,
                     },
                 },
                 Direction::West,
@@ -2631,6 +2637,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[1],
                         anchor: crate::graphics::Anchor::Center,
+                        p: None,
                     },
                 },
                 Direction::South,
@@ -2641,6 +2648,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[3],
                         anchor: crate::graphics::Anchor::Center,
+                        p: None,
                     },
                 },
                 Direction::North,
@@ -2657,6 +2665,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[3],
                         anchor: crate::graphics::Anchor::Top,
+                        p: None,
                     },
                 },
                 Direction::North,
@@ -2667,6 +2676,7 @@ snapshot_ui!(arrow_drawing, || {
                     y: crate::graphics::GraphicsY {
                         item: idxes[1],
                         anchor: crate::graphics::Anchor::Center,
+                        p: None,
                     },
                 },
                 Direction::South,

@@ -16,6 +16,8 @@ variable_dontcare = "94a4a2"
 variable_weak = "b9ac70"
 cursor = { color="ffa90e", width=2 }
 gesture = { color="ffa90e", width=2 }
+annotation_rectangle = {color = "e76b00", width = 2}
+annotation_arrow = {color = "832db6", width = 2}
 
 [colors]
 Blue = "3f90da"

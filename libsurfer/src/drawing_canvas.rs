@@ -695,7 +695,22 @@ impl SystemState {
             })
     }
 
-    pub fn draw_items(&mut self, ui: &mut Ui, msgs: &mut Vec<Message>, viewport_idx: usize) {
+    //Calculate the offset for annotations.
+    //TODO: uses gap as default, maybe combine.
+    fn annotation_offset(&self, ui: &Ui) -> f32 {
+        let mut offset = ui.spacing().item_spacing.y * 0.5;
+        if self.show_default_timeline() {
+            offset += ui.text_style_height(&egui::TextStyle::Body);
+        }
+        offset
+    }
+
+    pub fn draw_items(
+        &mut self,
+        ui: &mut Ui,
+        msgs: &mut Vec<Message>,
+        viewport_idx: usize,
+    ) {
         let Some(waves) = &self.user.waves else {
             return;
         };
@@ -812,6 +827,17 @@ impl SystemState {
                     .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
             ));
         }
+        let annotation_offset = self.annotation_offset(ui);
+
+        //TODO: dont call if going past max_y
+        if self.add_rectangle && response.drag_started_by(PointerButton::Primary) {
+            println!("gesture starting");
+            println!("{}", self.add_rectangle);
+            msgs.push(Message::SetMouseGestureDragStart(
+                ui.input(|i| i.pointer.press_origin())
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
+            ));
+        }
 
         // Check for measure drag starting
         if response.drag_started_by(PointerButton::Primary) && self.do_measure(&modifiers) {
@@ -867,9 +893,11 @@ impl SystemState {
         let viewport = &waves.viewports[viewport_idx];
         waves.draw_graphics(&mut ctx, viewport, &self.user.config.theme);
 
-        waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
-
-        waves.draw_markers(&self.user.config.theme, &mut ctx, viewport);
+        waves.draw_markers(
+            &self.user.config.theme,
+            &mut ctx,
+            &waves.viewports[viewport_idx],
+        );
 
         self.draw_marker_boxes(waves, &mut ctx, viewport, y_zero);
 
@@ -897,17 +925,34 @@ impl SystemState {
             msgs,
             &mut ctx,
             viewport_idx,
+            annotation_offset,
         );
 
-        self.draw_measure_widget(
+        //TODO: properly turn of measuretool when making annotation. Temporarily just checking add_rectangle flag to turn it off.
+        //As of now cursor dissapears altogether when drawing rectangles, which is not desired.
+        if !self.add_rectangle{
+
+            waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
+
+            self.draw_measure_widget(
+                ui,
+                waves,
+                pointer_pos_mouse_gesture,
+                &response,
+                msgs,
+                &mut ctx,
+                viewport_idx,
+            );
+        }
+
+        waves.draw_rectangles(
             ui,
-            waves,
-            pointer_pos_mouse_gesture,
-            &response,
-            msgs,
+            &waves.viewports[viewport_idx],
             &mut ctx,
-            viewport_idx,
+            &self.user.config.theme,
+            annotation_offset,
         );
+
         self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
     }
 

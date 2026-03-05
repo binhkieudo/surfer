@@ -360,6 +360,18 @@ impl SystemState {
                 redo_available,
             );
 
+            ui.separator();
+
+            //TODO: should be drop down menu with the different types of annotations
+            add_toolbar_button(
+                ui,
+                msgs,
+                icons::EDIT_BOX_LINE,
+                "Add Rectangle",
+                Message::AddRectangle,
+                wave_loaded,
+            );
+
             self.simulation_status_toolbar(ui, msgs);
             if let Some(waves) = &self.user.waves {
                 ui.separator();

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use camino::Utf8PathBuf;
 use derive_more::Debug;
-use egui::DroppedFile;
+use egui::{Color32, DroppedFile, Id, Rect};
 use emath::{Pos2, Vec2};
 use ftr_parser::types::Transaction;
 use num::BigInt;
@@ -14,7 +14,7 @@ use crate::async_util::AsyncJob;
 use crate::config::{PrimaryMouseDrag, TransitionValue};
 use crate::displayed_item_tree::{ItemIndex, VisibleItemIndex};
 use crate::frame_buffer::FrameBufferColorMode;
-use crate::graphics::{Graphic, GraphicId};
+use crate::graphics::{Graphic, GraphicId, GraphicsY};
 use crate::hierarchy::{ParameterDisplayLocation, ScopeExpandType};
 use crate::state::UserState;
 use crate::transaction_container::{
@@ -446,4 +446,15 @@ pub enum Message {
     /// Should only used for tests. Expands the parameter section so that one can test the rendering.
     ExpandParameterSection,
     AsyncDone(AsyncJob),
+    AddRectangle,
+    RectangleAdded {
+        id: Id,
+        time_at_start: BigInt,
+        time_at_end: BigInt,
+        wave_from: Option<GraphicsY>,
+        wave_to: Option<GraphicsY>,
+        rect: Rect,
+        color: Color32,
+        width: f32,
+    },
 }

@@ -481,6 +481,12 @@ pub struct SurferTheme {
     /// Line style for measurement lines
     pub measure: SurferLineStyle,
 
+    /// Line style for rectangle annotations
+    pub annotation_rectangle: SurferLineStyle,
+
+    /// Line style for arrow annotations
+    pub annotation_arrow: SurferLineStyle,
+
     ///  Line style for clock highlight lines
     pub clock_highlight_line: SurferLineStyle,
     #[serde(deserialize_with = "deserialize_hex_color")]
