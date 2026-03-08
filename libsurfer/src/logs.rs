@@ -13,7 +13,8 @@ use tracing_subscriber::Layer;
 use crate::{SystemState, message::Message};
 
 static RECORD_MUTEX: Mutex<Vec<LogMessage>> = Mutex::new(vec![]);
-
+static LOG_FILTER: Mutex<(bool, bool, bool, bool, bool)> =
+    Mutex::new((true, true, true, true, true));
 #[macro_export]
 macro_rules! try_log_error {
     ($expr:expr, $what:expr $(,)?) => {
@@ -72,6 +73,17 @@ impl SystemState {
             .collapsible(true)
             .resizable(true)
             .show(ctx, |ui| {
+                {
+                    let mut filters = LOG_FILTER.lock().unwrap();
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut filters.0, "Error");
+                        ui.checkbox(&mut filters.1, "Warn");
+                        ui.checkbox(&mut filters.2, "Info");
+                        ui.checkbox(&mut filters.3, "Debug");
+                        ui.checkbox(&mut filters.4, "Trace");
+                    });
+                }
+                
                 ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
 
                 egui::ScrollArea::new([true, false]).show(ui, |ui| {
@@ -94,17 +106,25 @@ impl SystemState {
                         })
                         .body(|body| {
                             let records = RECORD_MUTEX.lock().unwrap();
-                            let heights = records
+                            let filters = LOG_FILTER.lock().unwrap();
+                            let filtered: Vec<&LogMessage> = records
                                 .iter()
-                                .map(|record| {
-                                    let height = record.msg.lines().count() as f32;
-
-                                    height * 15.
+                                .filter(|record| match record.level {
+                                    Level::ERROR => filters.0,
+                                    Level::WARN => filters.1,
+                                    Level::INFO => filters.2,
+                                    Level::DEBUG => filters.3,
+                                    Level::TRACE => filters.4,
                                 })
+                                .collect();
+
+                            let heights = filtered
+                                .iter()
+                                .map(|record|record.msg.lines().count() as f32 * 15.0)
                                 .collect::<Vec<_>>();
 
                             body.heterogeneous_rows(heights.into_iter(), |mut row: TableRow| {
-                                let record = &records[row.index()];
+                                let record = filtered[row.index()];
                                 row.col(|ui| {
                                     let (color, text) = match record.level {
                                         Level::ERROR => (Color32::RED, "Error"),
