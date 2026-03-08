@@ -83,7 +83,7 @@ impl SystemState {
                         ui.checkbox(&mut filters.4, "Trace");
                     });
                 }
-                
+
                 ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
 
                 egui::ScrollArea::new([true, false]).show(ui, |ui| {
@@ -120,7 +120,7 @@ impl SystemState {
 
                             let heights = filtered
                                 .iter()
-                                .map(|record|record.msg.lines().count() as f32 * 15.0)
+                                .map(|record| record.msg.lines().count() as f32 * 15.0)
                                 .collect::<Vec<_>>();
 
                             body.heterogeneous_rows(heights.into_iter(), |mut row: TableRow| {
