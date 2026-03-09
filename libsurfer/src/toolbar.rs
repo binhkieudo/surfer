@@ -3,6 +3,7 @@ use egui::{Button, Layout, Panel, RichText, Ui};
 use egui_remixicon::icons;
 use emath::{Align, Vec2};
 
+use crate::arrow::ArrowHeadMode;
 use crate::message::MessageTarget;
 use crate::time::time_input_widget;
 use crate::wave_container::SimulationStatus;
@@ -369,6 +370,27 @@ impl SystemState {
                 icons::EDIT_BOX_LINE,
                 "Add Rectangle",
                 Message::AddRectangle,
+                wave_loaded,
+            );
+
+            add_toolbar_button(
+                ui,
+                msgs,
+                icons::ARROW_RIGHT_UP_FILL,
+                "Add Arrow",
+                Message::AddArrow {
+                    head_mode: ArrowHeadMode::End,
+                },
+                wave_loaded,
+            );
+            add_toolbar_button(
+                ui,
+                msgs,
+                icons::ARROW_LEFT_RIGHT_FILL,
+                "Add Double Headed Arrow",
+                Message::AddArrow {
+                    head_mode: ArrowHeadMode::Double,
+                },
                 wave_loaded,
             );
 

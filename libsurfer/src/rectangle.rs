@@ -15,6 +15,8 @@ pub struct RectAnnotation {
     pub rect: Rect,
     pub color: egui::Color32,
     pub width: f32,
+    pub group_name: Option<String>,
+    pub visible: bool,
 }
 
 impl RectAnnotation {
@@ -33,6 +35,23 @@ impl RectAnnotation {
             rect,
             color: egui::Color32::from_rgb(255, 255, 255),
             width: 2.0,
+            group_name: None,
+            visible: true,
+        }
+    }
+    pub fn get_id(&self) -> Id {
+        self.id
+    }
+
+    pub fn get_time_at_start(&self) -> BigInt {
+        return (&self.time_at_start + &self.time_at_end) / 2;
+    }
+
+    pub fn toggle_rectangle_visiblility(&mut self) {
+        if self.visible {
+            self.visible = false;
+        } else {
+            self.color = egui::Color32::TRANSPARENT;
         }
     }
 }
@@ -111,6 +130,8 @@ impl Default for RectAnnotation {
             wave_to: None,
             color: egui::Color32::from_rgb(255, 255, 255),
             width: 0.0,
+            group_name: None,
+            visible: true,
         }
     }
 }

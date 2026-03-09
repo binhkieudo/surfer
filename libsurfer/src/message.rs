@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use surver::SurverStatus;
 
+use crate::arrow::{ArrowHeadMode, WavePoint};
 use crate::async_util::AsyncJob;
 use crate::config::{PrimaryMouseDrag, TransitionValue};
 use crate::displayed_item_tree::{ItemIndex, VisibleItemIndex};
@@ -21,6 +22,7 @@ use crate::transaction_container::{
     StreamScopeRef, TransactionContainer, TransactionRef, TransactionStreamRef,
 };
 use crate::translation::DynTranslator;
+use crate::view::DrawingContext;
 use crate::viewport::ViewportStrategy;
 use crate::wave_data::ScopeType;
 use crate::{
@@ -313,7 +315,7 @@ pub enum Message {
     SetFrameBufferMode(FrameBufferColorMode, u8, u8, u8),
     SetFrameBufferWidth(usize),
     SetFrameBufferRange(Vec<(i64, i64)>),
-    SetMouseGestureDragStart(Option<Pos2>),
+    SetMouseGestureDragStart(Option<Pos2>, Option<BigInt>),
     SetMeasureDragStart(Option<Pos2>),
     SetFilterFocused(bool),
     SetTimeEditFocused(bool),
@@ -456,5 +458,16 @@ pub enum Message {
         rect: Rect,
         color: Color32,
         width: f32,
+    },
+    AddArrow {
+        head_mode: ArrowHeadMode,
+    },
+
+    ArrowAdded {
+        wave_point_from: WavePoint,
+        wave_point_to: WavePoint,
+        color: Color32,
+        width: f32,
+        head_mode: ArrowHeadMode,
     },
 }

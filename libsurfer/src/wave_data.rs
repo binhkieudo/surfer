@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use surfer_translation_types::{TranslationPreference, Translator, VariableValue};
 use tracing::{error, info, warn};
 
+use crate::arrow::ArrowAnnotation;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     DisplayedDivider, DisplayedFieldRef, DisplayedGroup, DisplayedItem, DisplayedItemRef,
@@ -67,6 +68,9 @@ pub struct WaveData {
     pub cursor: Option<BigInt>,
     pub markers: HashMap<u8, BigInt>,
     pub rectangles: Vec<RectAnnotation>,
+
+    pub arrows: Vec<ArrowAnnotation>,
+
     pub focused_item: Option<VisibleItemIndex>,
     pub focused_transaction: (Option<TransactionRef>, Option<Transaction>),
     pub default_variable_name_type: VariableNameType,
@@ -197,6 +201,7 @@ impl WaveData {
             cursor: self.cursor.clone(),
             markers: self.markers.clone(),
             rectangles: self.rectangles.clone(),
+            arrows: self.arrows.clone(),
             focused_item: self.focused_item,
             focused_transaction: self.focused_transaction,
             default_variable_name_type: self.default_variable_name_type,
@@ -538,6 +543,14 @@ impl WaveData {
                         .wave_to
                         .as_ref()
                         .map_or(true, |to| to.item != removed_ref)
+            });
+
+            self.arrows.retain(|arrow| {
+                arrow
+                    .to
+                    .attached_item
+                    .as_ref()
+                    .is_none_or(|&item_ref| item_ref != removed_ref)
             });
         }
 
@@ -894,6 +907,7 @@ impl WaveData {
         if first_element_bottom <= threshold {
             return None;
         }
+
         self.drawing_infos
             .iter()
             .enumerate()

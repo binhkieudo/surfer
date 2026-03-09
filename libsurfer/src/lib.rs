@@ -2,6 +2,7 @@
 
 pub mod analog_renderer;
 pub mod analog_signal_cache;
+pub mod arrow;
 pub mod async_util;
 pub mod batch_commands;
 #[cfg(feature = "performance_plot")]
@@ -68,6 +69,8 @@ pub mod wave_source;
 pub mod wcp;
 pub mod wellen;
 
+use crate::arrow::ArrowAnnotation;
+use crate::arrow::ArrowHeadMode;
 use crate::channels::checked_send;
 use crate::comment::Comment;
 use crate::config::AutoLoad;
@@ -76,6 +79,7 @@ use crate::displayed_item_tree::TargetPosition;
 use crate::rectangle::RectAnnotation;
 use crate::remote::get_time_table_from_server;
 use crate::variable_name_type::VariableNameType;
+use crate::view::DrawingContext;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -90,6 +94,7 @@ use derive_more::Display;
 use displayed_item::DisplayedVariable;
 use displayed_item_tree::DisplayedItemTree;
 use eframe::{App, CreationContext};
+use egui::Color32;
 use egui::{FontData, FontDefinitions, FontFamily};
 use eyre::{Result, WrapErr as _};
 use ftr_parser::types::Transaction;
@@ -283,6 +288,7 @@ struct CanvasState {
     displayed_items: HashMap<DisplayedItemRef, DisplayedItem>,
     markers: HashMap<u8, BigInt>,
     rectangles: Vec<RectAnnotation>,
+    arrows: Vec<ArrowAnnotation>,
 }
 
 impl SystemState {
@@ -1693,7 +1699,10 @@ impl SystemState {
                 self.user.show_performance = s;
             }
             Message::SetContinuousRedraw(s) => self.continuous_redraw = s,
-            Message::SetMouseGestureDragStart(pos) => self.gesture_start_location = pos,
+            Message::SetMouseGestureDragStart(pos, time) => {
+                self.gesture_start_location = pos;
+                self.gesture_start_time = time
+            }
             Message::SetMeasureDragStart(pos) => self.measure_start_location = pos,
             Message::SetFilterFocused(s) => self.user.variable_name_filter_focused = s,
             Message::SetTimeEditFocused(s) => self.time_edit_focused = s,
@@ -1890,6 +1899,7 @@ impl SystemState {
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
                         waves.rectangles = prev_state.rectangles;
+                        waves.arrows = prev_state.arrows;
                     } else {
                         break;
                     }
@@ -1908,6 +1918,7 @@ impl SystemState {
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
                         waves.rectangles = prev_state.rectangles;
+                        waves.arrows = prev_state.arrows;
                     } else {
                         break;
                     }
@@ -2285,10 +2296,47 @@ impl SystemState {
                     rect,
                     color,
                     width,
+                    group_name: None,
+                    visible: true,
                 });
 
                 self.next_id_source += 1;
+                self.add_rectangle = true;
             }
+            Message::AddArrow { head_mode } => {
+                self.add_arrow = !self.add_arrow;
+                match head_mode {
+                    ArrowHeadMode::End => {
+                        self.add_simple_arrow = true;
+                        self.add_double_headed_arrow = false;
+                    }
+                    ArrowHeadMode::Double => {
+                        self.add_simple_arrow = false;
+                        self.add_double_headed_arrow = true;
+                    }
+                }
+                println!("Add arrow message received");
+            }
+            Message::ArrowAdded {
+                wave_point_from,
+                wave_point_to,
+                color,
+                width,
+                head_mode,
+            } => {
+                self.save_current_canvas("Add arrow".to_string());
+
+                let waves = self.user.waves.as_mut()?;
+
+                waves.arrows.push(ArrowAnnotation::new(
+                    wave_point_from,
+                    wave_point_to,
+                    color,
+                    width,
+                    head_mode,
+                ));
+            }
+
             Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
         }
         

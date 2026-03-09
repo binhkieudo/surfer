@@ -3,10 +3,12 @@ use derive_more::Display;
 use egui::{Context, Painter, PointerButton, Response, RichText, Sense, Window};
 use emath::{Align2, Pos2, Rect, RectTransform, Vec2};
 use epaint::{FontId, Stroke};
+use num::BigInt;
 use serde::Deserialize;
 
+use crate::arrow::{ArrowHeadMode, WavePoint};
 use crate::config::{SurferConfig, SurferTheme};
-use crate::graphics::{Anchor, GraphicsY};
+use crate::graphics::{Anchor, GrPoint, GraphicsY};
 use crate::time::TimeFormatter;
 use crate::view::DrawingContext;
 use crate::{Message, SystemState, wave_data::WaveData};
@@ -74,14 +76,19 @@ impl SystemState {
         viewport_idx: usize,
         y_offset: f32,
     ) {
-        if let Some(start_location) = self.gesture_start_location {
+        if let Some(mut start_location) = self.gesture_start_location {
             if self.add_rectangle && start_location.y > waves.get_content_height(y_offset) {
                 return;
+            }
+            if let Some(time) = &self.gesture_start_time{
+                let x_pixel = waves.viewports[viewport_idx].pixel_from_time(&time, ctx.cfg.canvas_size.x, &waves.safe_num_timestamps());
+                start_location.x = x_pixel;
             }
             let modifiers = egui_ctx.input(|i| i.modifiers);
             if response.dragged_by(PointerButton::Middle)
                 || modifiers.command && response.dragged_by(PointerButton::Primary)
                 || self.add_rectangle && response.dragged_by(PointerButton::Primary)
+                || self.add_arrow && response.dragged_by(PointerButton::Primary)
             {
                 self.start_dragging(
                     pointer_pos_canvas,
@@ -97,6 +104,7 @@ impl SystemState {
             if response.drag_stopped_by(PointerButton::Middle)
                 || modifiers.command && response.drag_stopped_by(PointerButton::Primary)
                 || self.add_rectangle && response.drag_stopped_by(PointerButton::Primary)
+                || self.add_arrow && response.drag_stopped_by(PointerButton::Primary)
             {
                 let frame_width = response.rect.width();
                 self.stop_dragging(
@@ -125,7 +133,7 @@ impl SystemState {
         y_offset: f32,
     ) {
         let num_timestamps = waves.safe_num_timestamps();
-        let Some(mut end_location) = pointer_pos_canvas else {
+        let Some(end_location) = pointer_pos_canvas else {
             return;
         };
         let distance = end_location - start_location;
@@ -150,7 +158,7 @@ impl SystemState {
                     &num_timestamps,
                 );
 
-                let wave_from = if let Some(vidx_from) =
+                let wave_from: Option<GraphicsY> = if let Some(vidx_from) =
                     waves.get_item_at_y(start_location.y - y_offset)
                     && let Some(node) = waves.items_tree.get_visible(vidx_from)
                 {
@@ -203,13 +211,78 @@ impl SystemState {
                         width,
                     });
                 }
+            } else if self.add_arrow == true {
+                let color = self.user.config.theme.annotation_arrow.color;
+                let width = self.user.config.theme.annotation_arrow.width;
+                let start_pos = (ctx.to_screen)(start_location.x, start_location.y);
+                let end_pos = (ctx.to_screen)(end_location.x, end_location.y);
+                println!("end_pos_y: {}", end_pos.y);
+
+                //fix offset, difference between wave data with timeline, pointer_pos_canvas and pointer_pos_mouse_gesture.
+                let mut offset = 0.0;
+                if self.show_default_timeline() {
+                    offset = 20.0;
+                }
+
+                let time_from: BigInt = waves.viewports[viewport_idx].as_time_bigint(
+                    start_location.x,
+                    frame_width,
+                    &num_timestamps,
+                );
+
+                let snap_pos = Some(Pos2::new(end_location.x, end_location.y - offset));
+
+                let time_to: BigInt = self
+                    .snap_to_edge(snap_pos, waves, frame_width, viewport_idx)
+                    .unwrap_or_else(|| {
+                        waves.viewports[viewport_idx].as_time_bigint(
+                            end_location.x,
+                            frame_width,
+                            &num_timestamps,
+                        )
+                    });
+
+                let attached_item_to = waves.item_ref_at_canvas_y(end_location.y - offset);
+                let attached_item_from = waves.item_ref_at_canvas_y(start_location.y - offset);
+
+                let mut head_mode = ArrowHeadMode::End;
+
+                if self.add_double_headed_arrow == true {
+                    head_mode = ArrowHeadMode::Double;
+                };
+
+                // let from : GrPoint = ;
+
+                println!("Mode: {:?}", head_mode);
+
+                let wave_point_from = WavePoint {
+                    time: time_from.clone(),
+                    attached_item: attached_item_from,
+                    screen_pos: start_pos,
+                };
+
+                let wave_point_to = WavePoint {
+                    time: time_to.clone(),
+                    attached_item: attached_item_to,
+                    screen_pos: end_pos,
+                };
+
+                if attached_item_to.is_some() {
+                    msgs.push(Message::ArrowAdded {
+                        wave_point_from,
+                        wave_point_to,
+                        color,
+                        width,
+                        head_mode,
+                    });
+                };
             } else {
                 match gesture_type(self.user.config.gesture.mapping, distance) {
                     GestureKind::ZoomToFit => {
                         msgs.push(Message::ZoomToFit { viewport_idx });
                     }
                     GestureKind::ZoomIn => {
-                        let (minx, maxx) = if end_location.x < start_location.x {
+                        let (min_x, max_x) = if end_location.x < start_location.x {
                             (end_location.x, start_location.x)
                         } else {
                             (start_location.x, end_location.x)
@@ -217,12 +290,12 @@ impl SystemState {
                         msgs.push(Message::ZoomToRange {
                             // FIXME: No need to go via bigint here, this could all be relative
                             start: waves.viewports[viewport_idx].as_time_bigint(
-                                minx,
+                                min_x,
                                 frame_width,
                                 &num_timestamps,
                             ),
                             end: waves.viewports[viewport_idx].as_time_bigint(
-                                maxx,
+                                max_x,
                                 frame_width,
                                 &num_timestamps,
                             ),
@@ -246,7 +319,7 @@ impl SystemState {
                 }
             }
         }
-        msgs.push(Message::SetMouseGestureDragStart(None));
+        msgs.push(Message::SetMouseGestureDragStart(None, None));
     }
 
     fn start_dragging(
@@ -268,6 +341,8 @@ impl SystemState {
                 let current_location =
                     self.clamp_y(current_location, waves.get_content_height(y_offset));
                 self.draw_gesture_rectangle(start_location, current_location, ctx);
+            } else if self.add_arrow == true {
+                self.draw_arrow_line(start_location, current_location, "Add arrow", true, ctx);
             } else {
                 match gesture_type(self.user.config.gesture.mapping, distance) {
                     GestureKind::ZoomToFit => self.draw_gesture_line(
@@ -361,6 +436,39 @@ impl SystemState {
     ) {
         let color = if active {
             self.user.config.theme.gesture.color
+        } else {
+            self.user.config.theme.gesture.color.gamma_multiply(0.3)
+        };
+        let stroke = Stroke {
+            color,
+            width: self.user.config.theme.gesture.width,
+        };
+        ctx.painter.line_segment(
+            [
+                (ctx.to_screen)(end.x, end.y),
+                (ctx.to_screen)(start.x, start.y),
+            ],
+            stroke,
+        );
+        draw_gesture_text(
+            ctx,
+            (ctx.to_screen)(end.x, end.y),
+            text.to_string(),
+            &self.user.config.theme,
+        );
+    }
+
+    /// TODO: fixe code duplication
+    fn draw_arrow_line(
+        &self,
+        start: Pos2,
+        end: Pos2,
+        text: &str,
+        active: bool,
+        ctx: &mut DrawingContext,
+    ) {
+        let color = if active {
+            self.user.config.theme.annotation_arrow.color
         } else {
             self.user.config.theme.gesture.color.gamma_multiply(0.3)
         };

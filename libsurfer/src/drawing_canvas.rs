@@ -824,20 +824,35 @@ impl SystemState {
         {
             msgs.push(Message::SetMouseGestureDragStart(
                 ui.input(|i| i.pointer.press_origin())
-                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)), None
             ));
         }
         let annotation_offset = self.annotation_offset(ui);
 
-        //TODO: dont call if going past max_y
-        if self.add_rectangle && response.drag_started_by(PointerButton::Primary) {
-            println!("gesture starting");
-            println!("{}", self.add_rectangle);
+        if self.add_rectangle && response.drag_started_by(PointerButton::Primary)
+            || self.add_arrow && response.drag_started_by(PointerButton::Primary)
+        {
+            let start = ui.input(|i| i.pointer.press_origin())
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false));
+            let time = waves.viewports[viewport_idx].as_time_bigint(
+                    start.unwrap().x,
+                    frame_width,
+                    &num_timestamps,
+                );
             msgs.push(Message::SetMouseGestureDragStart(
                 ui.input(|i| i.pointer.press_origin())
-                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),Some(time)
             ));
         }
+
+        // if self.add_arrow && response.drag_started_by(PointerButton::Primary) {
+        //     println!("gesture starting");
+        //     println!("{}", self.add_arrow);
+        //     msgs.push(Message::SetMouseGestureDragStart(
+        //         ui.input(|i| i.pointer.press_origin())
+        //             .map(|p| self.transform_pos(to_screen, p, ui, false)),
+        //     ));
+        // }
 
         // Check for measure drag starting
         if response.drag_started_by(PointerButton::Primary) && self.do_measure(&modifiers) {
@@ -917,17 +932,6 @@ impl SystemState {
             self.draw_default_timeline(waves, &ctx, viewport_idx);
         }
 
-        self.draw_mouse_gesture_widget(
-            ui,
-            waves,
-            pointer_pos_mouse_gesture,
-            &response,
-            msgs,
-            &mut ctx,
-            viewport_idx,
-            annotation_offset,
-        );
-
         //TODO: properly turn of measuretool when making annotation. Temporarily just checking add_rectangle flag to turn it off.
         //As of now cursor dissapears altogether when drawing rectangles, which is not desired.
         if !self.add_rectangle{
@@ -945,6 +949,17 @@ impl SystemState {
             );
         }
 
+        self.draw_mouse_gesture_widget(
+                ui,
+                waves,
+                pointer_pos_mouse_gesture,
+                &response,
+                msgs,
+                &mut ctx,
+                viewport_idx,
+                annotation_offset,
+            );
+
         waves.draw_rectangles(
             ui,
             &waves.viewports[viewport_idx],
@@ -954,6 +969,18 @@ impl SystemState {
         );
 
         self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
+
+        //self.draw_arrows(ui, waves.viewports[viewport_idx], &mut ctx);
+
+        let viewport = waves.viewports[viewport_idx].clone();
+
+        waves.draw_arrows(
+            &waves.arrows,
+            ui,
+            viewport,
+            &mut ctx,
+            &self.user.config.theme,
+        );
     }
 
     fn draw_wave_data(
@@ -1329,6 +1356,10 @@ impl SystemState {
         // Draws the relations of the focused transaction
         if let Some(focused_pos) = focused_transaction_start {
             let path_stroke = PathStroke::from(&ctx.theme.relation_arrow.style);
+            // let stroke = PathStroke::from({
+            // color = self.user.config.theme.annotation_arrow.color
+            // width = self.user.config.theme.annotation_arrow.width
+            // });
             for start_pos in inc_relation_starts {
                 self.draw_arrow(start_pos, focused_pos, ctx, &path_stroke);
             }
@@ -1666,7 +1697,7 @@ impl SystemState {
     /// if the cursor is close enough to any transition. If the cursor is on the canvas and no
     /// transitions are close enough for snapping, the raw point will be returned. If the cursor is
     /// off the canvas, `None` is returned
-    fn snap_to_edge(
+    pub fn snap_to_edge(
         &self,
         pointer_pos_canvas: Option<Pos2>,
         waves: &WaveData,

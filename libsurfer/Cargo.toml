@@ -57,7 +57,7 @@ bincode.workspace = true
 bytes.workspace = true
 bytesize.workspace = true
 camino.workspace = true
-chrono = { workspace = true, default-features = false }
+chrono = { workspace = true, default-features = false, features = ["clock", "serde"] }
 config.workspace = true
 derive_more.workspace = true
 ecolor.workspace = true

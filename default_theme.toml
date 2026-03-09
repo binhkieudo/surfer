@@ -51,6 +51,6 @@ style = { color="222222", width=2 }
 density = 1
 
 [relation_arrow]
-style = { color  = "c61521", width = 1.3 }
+style = { color  = "c586c0", width = 1.3 }
 head_angle = 25
 head_length = 8
