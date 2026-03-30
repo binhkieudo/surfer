@@ -86,9 +86,31 @@ pub fn show_command_prompt(
                     }
                 };
 
+                /*
                 if response.ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
                     set_cursor_to_pos(input.chars().count(), ui);
+                } */
+
+                if response.ctx.input(|i| i.key_pressed(Key::Escape)) {
+                    msgs.push(Message::HideCommandPrompt);
                 }
+
+                if response.ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
+                    msgs.push(Message::SelectPrevCommand);
+                }
+
+                if response.ctx.input(|i| i.key_pressed(Key::ArrowDown)) {
+                    msgs.push(Message::SelectNextCommand);
+                }
+
+                if response.ctx.input(|i| i.key_pressed(Key::N)) {
+                    msgs.push(Message::SelectNextCommand);
+                }
+
+                if response.ctx.input(|i| i.key_pressed(Key::P)) {
+                    msgs.push(Message::SelectPrevCommand);
+                }
+
                 if let Some((normal, selected)) = text_update {
                     let normal_cnt = normal.chars().count();
                     if selected.is_empty() {

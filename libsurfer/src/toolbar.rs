@@ -1,5 +1,6 @@
 //! Toolbar handling.
-use egui::{Button, Layout, Panel, RichText, Ui};
+use eframe::glow::TRUE;
+use egui::{Button, Context, Layout, Panel, RichText, TopBottomPanel, Ui};
 use egui_remixicon::icons;
 use emath::{Align, Vec2};
 
@@ -370,7 +371,7 @@ impl SystemState {
                 icons::EDIT_BOX_LINE,
                 "Add Rectangle",
                 Message::AddRectangle,
-                wave_loaded,
+                wave_loaded & !self.add_rectangle,
             );
 
             add_toolbar_button(
@@ -381,7 +382,7 @@ impl SystemState {
                 Message::AddArrow {
                     head_mode: ArrowHeadMode::End,
                 },
-                wave_loaded,
+                wave_loaded & !self.add_simple_arrow,
             );
             add_toolbar_button(
                 ui,
@@ -391,6 +392,15 @@ impl SystemState {
                 Message::AddArrow {
                     head_mode: ArrowHeadMode::Double,
                 },
+                wave_loaded & !self.add_double_headed_arrow,
+            );
+
+            add_toolbar_button(
+                ui,
+                msgs,
+                icons::LIST_CHECK,
+                "Annotations list",
+                Message::SetAnnotationlistVisible(),
                 wave_loaded,
             );
 

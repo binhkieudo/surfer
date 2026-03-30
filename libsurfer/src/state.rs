@@ -137,6 +137,8 @@ pub struct UserState {
     // - Sequencing issue in serialization, due to us having to run that async
     #[serde(skip)]
     pub state_file: Option<PathBuf>,
+
+    pub(crate) show_annotation_list: bool,
 }
 
 // Impl needed since for loading we need to put State into a Message
@@ -220,6 +222,7 @@ impl Default for UserState {
             surver_file_infos: None,
             surver_url: None,
             transition_value: None,
+            show_annotation_list: false,
         }
     }
 }
@@ -342,8 +345,8 @@ impl SystemState {
                             viewports,
                             cursor: None,
                             markers: HashMap::new(),
-                            rectangles: vec![],
-                            arrows: Vec::new(),
+
+                            annotations: Vec::new(),
                             focused_item: None,
                             focused_transaction: (None, None),
                             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -357,6 +360,8 @@ impl SystemState {
                             graphics: HashMap::new(),
                             cache_generation: 0,
                             inflight_caches: HashMap::new(),
+                            available_groups: vec![],
+                            annotation_list_visible: false,
                         },
                         None,
                     ),
@@ -418,8 +423,7 @@ impl SystemState {
             viewports,
             cursor: None,
             markers: HashMap::new(),
-            rectangles: vec![],
-            arrows: Vec::new(),
+            annotations: Vec::new(),
             focused_item: None,
             focused_transaction: (None, None),
             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -433,6 +437,8 @@ impl SystemState {
             graphics: HashMap::new(),
             cache_generation: 0,
             inflight_caches: HashMap::new(),
+            available_groups: vec![],
+            annotation_list_visible: false,
         };
 
         self.invalidate_draw_commands();
@@ -591,8 +597,9 @@ impl SystemState {
             items_tree: waves.items_tree.clone(),
             displayed_items: waves.displayed_items.clone(),
             markers: waves.markers.clone(),
-            rectangles: waves.rectangles.clone(),
-            arrows: waves.arrows.clone(),
+            annotations: waves.annotations.clone(),
+            annotation_group: waves.available_groups.clone(),
+            annotation_list: waves.annotation_list_visible.clone(),
         }
     }
 

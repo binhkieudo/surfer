@@ -198,6 +198,8 @@ impl SystemState {
                         rect: temp_rect,
                         color,
                         width,
+                        name: "".to_string(),
+                        group_name: None,
                     });
                 } else {
                     msgs.push(Message::RectangleAdded {
@@ -209,6 +211,8 @@ impl SystemState {
                         rect: temp_rect,
                         color,
                         width,
+                        name: "".to_string(),
+                        group_name: None,
                     });
                 }
             } else if self.add_arrow == true {
@@ -274,6 +278,7 @@ impl SystemState {
                         color,
                         width,
                         head_mode,
+                        group_name: None,
                     });
                 };
             } else {

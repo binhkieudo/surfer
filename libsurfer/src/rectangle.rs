@@ -1,6 +1,6 @@
 //use egui::{Ui, Response, Widget};
-use crate::{config::SurferTheme, graphics::GraphicsY, view::DrawingContext, viewport::Viewport, wave_data::WaveData};
-use egui::{Id, Rect, Response, Sense, Stroke, Ui, Widget};
+use crate::{config::SurferTheme, graphics::GraphicsY, message::Message, view::DrawingContext, viewport::Viewport, wave_data::WaveData};
+use egui::{Id, Pos2, Rect, Response, Sense, Stroke, Ui, Widget};
 use num::BigInt;
 
 //TODO: Add dynamic color change in regards to selected theme. See get_marker_color in marker.rs
@@ -15,8 +15,10 @@ pub struct RectAnnotation {
     pub rect: Rect,
     pub color: egui::Color32,
     pub width: f32,
+    pub name: String,
     pub group_name: Option<String>,
     pub visible: bool,
+    pub open_quick_menu: bool,
 }
 
 impl RectAnnotation {
@@ -35,8 +37,10 @@ impl RectAnnotation {
             rect,
             color: egui::Color32::from_rgb(255, 255, 255),
             width: 2.0,
+            name: "".to_string(),
             group_name: None,
             visible: true,
+            open_quick_menu: false,
         }
     }
     pub fn get_id(&self) -> Id {
@@ -53,6 +57,35 @@ impl RectAnnotation {
         } else {
             self.color = egui::Color32::TRANSPARENT;
         }
+    }
+
+    pub fn get_pos(
+        &self,
+        waves: &WaveData,
+        viewport: &Viewport,
+        ctx: &DrawingContext,
+        y_offset: f32,
+    ) -> Option<Pos2> {
+        if !self.visible {
+            return None;
+        }
+
+        let num_timestamps = waves.safe_num_timestamps();
+
+        let x1 =
+            viewport.pixel_from_time(&self.time_at_start, ctx.cfg.canvas_size.x, &num_timestamps);
+        let x2 = viewport.pixel_from_time(&self.time_at_end, ctx.cfg.canvas_size.x, &num_timestamps);
+
+        let from_y = self
+            .wave_from
+            .as_ref()
+            .and_then(|from| waves.get_item_y(from))?;
+        let to_y = self.wave_to.as_ref().and_then(|to| waves.get_item_y(to))?;
+
+        let min_x = x1.min(x2);
+        let min_y = (from_y + y_offset).min(to_y + y_offset);
+
+        Some((ctx.to_screen)(min_x, min_y))
     }
 }
 
@@ -130,73 +163,73 @@ impl Default for RectAnnotation {
             wave_to: None,
             color: egui::Color32::from_rgb(255, 255, 255),
             width: 0.0,
+            name: "".to_string(),
             group_name: None,
             visible: true,
+            open_quick_menu: false,
         }
     }
 }
 
 impl WaveData {
-
-    pub fn draw_rectangles(
+    pub fn draw_rectangle(
         &self,
+        rect: &RectAnnotation,
         ui: &mut egui::Ui,
         viewport: &Viewport,
         ctx: &mut DrawingContext,
         theme: &SurferTheme,
         y_offset: f32,
+        msgs: &mut Vec<Message>,
     ) {
-        for rectangle in &self.rectangles {
-            let num_timestamps = &self.safe_num_timestamps();
+        let num_timestamps = &self.safe_num_timestamps();
 
-                let mut rectangle_annotation = rectangle.clone();
-                rectangle_annotation.color = theme.annotation_rectangle.color;
-                rectangle_annotation.rect.min.x = viewport.pixel_from_time(
-                    &rectangle.time_at_start, 
-                    ctx.cfg.canvas_size.x, 
-                    &num_timestamps
+        let mut rectangle_annotation = rect.clone();
+
+        if rectangle_annotation.visible{
+            rectangle_annotation.color = theme.annotation_rectangle.color;
+            rectangle_annotation.width = theme.annotation_rectangle.width;
+            rectangle_annotation.rect.min.x =
+                viewport.pixel_from_time(&rect.time_at_start, ctx.cfg.canvas_size.x, &num_timestamps);
+
+            rectangle_annotation.rect.max.x =
+                viewport.pixel_from_time(&rect.time_at_end, ctx.cfg.canvas_size.x, &num_timestamps);
+
+            let from_y = rectangle_annotation
+                .wave_from
+                .as_ref()
+                .and_then(|from| self.get_item_y(from));
+            let to_y = rectangle_annotation
+                .wave_to
+                .as_ref()
+                .and_then(|to| self.get_item_y(to));
+
+            if let Some(to_y) = to_y
+                && let Some(from_y) = from_y
+            {
+                if from_y < to_y {
+                    rectangle_annotation.rect.min.y = from_y + y_offset;
+                    rectangle_annotation.rect.max.y = to_y + y_offset;
+                } else {
+                    rectangle_annotation.rect.min.y = to_y + y_offset;
+                    rectangle_annotation.rect.max.y = from_y + y_offset;
+                }
+
+                rectangle_annotation.rect.min = (ctx.to_screen)(
+                    rectangle_annotation.rect.min.x,
+                    rectangle_annotation.rect.min.y,
+                );
+                rectangle_annotation.rect.max = (ctx.to_screen)(
+                    rectangle_annotation.rect.max.x,
+                    rectangle_annotation.rect.max.y,
                 );
 
-                rectangle_annotation.rect.max.x = viewport.pixel_from_time(
-                    &rectangle.time_at_end, 
-                    ctx.cfg.canvas_size.x, 
-                    &num_timestamps
-                );
-
-                let from_y = rectangle_annotation
-                    .wave_from
-                    .as_ref()
-                    .and_then(|from| self.get_item_y(from));
-                let to_y = rectangle_annotation
-                    .wave_to
-                    .as_ref()
-                    .and_then(|to| self.get_item_y(to));
-
-                if let Some(to_y) = to_y
-                    && let Some(from_y) = from_y
-                {
-                    if from_y < to_y {
-                        rectangle_annotation.rect.min.y = from_y + y_offset;
-                        rectangle_annotation.rect.max.y = to_y + y_offset;
-                    } else {
-                        rectangle_annotation.rect.min.y = to_y + y_offset;
-                        rectangle_annotation.rect.max.y = from_y + y_offset;
-                    }
-
-                    rectangle_annotation.rect.min = (ctx.to_screen)(
-                        rectangle_annotation.rect.min.x,
-                        rectangle_annotation.rect.min.y,
-                    );
-                    rectangle_annotation.rect.max = (ctx.to_screen)(
-                        rectangle_annotation.rect.max.x,
-                        rectangle_annotation.rect.max.y,
-                    );
-
-                    let res = ui.add(rectangle_annotation); // clone is fine if needed for ui
-                    if res.clicked_by(egui::PointerButton::Primary) {
-                        println!("rec id: {:?}", rectangle.id);
-                    }
+                let res = ui.add(rectangle_annotation);
+                if res.clicked_by(egui::PointerButton::Primary) {
+                    println!("rec id: {:?}", rect.id);
                 }
             }
         }
+        
     }
+}

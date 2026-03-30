@@ -933,9 +933,8 @@ impl SystemState {
         }
 
         //TODO: properly turn of measuretool when making annotation. Temporarily just checking add_rectangle flag to turn it off.
-        //As of now cursor dissapears altogether when drawing rectangles, which is not desired.
-        if !self.add_rectangle{
-
+        //As of now cursor disappears altogether when drawing rectangles, which is not desired.
+        if !self.add_rectangle && !self.add_arrow {
             waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
 
             self.draw_measure_widget(
@@ -960,27 +959,17 @@ impl SystemState {
                 annotation_offset,
             );
 
-        waves.draw_rectangles(
+        waves.draw_annotations(
             ui,
             &waves.viewports[viewport_idx],
+            viewport_idx,
             &mut ctx,
             &self.user.config.theme,
             annotation_offset,
+            msgs,
         );
 
         self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
-
-        //self.draw_arrows(ui, waves.viewports[viewport_idx], &mut ctx);
-
-        let viewport = waves.viewports[viewport_idx].clone();
-
-        waves.draw_arrows(
-            &waves.arrows,
-            ui,
-            viewport,
-            &mut ctx,
-            &self.user.config.theme,
-        );
     }
 
     fn draw_wave_data(

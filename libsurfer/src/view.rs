@@ -363,6 +363,7 @@ impl SystemState {
         if self.show_statusbar() {
             self.add_statusbar_panel(ui, self.user.waves.as_ref(), &mut msgs);
         }
+
         if let Some(waves) = &self.user.waves
             && self.show_overview()
             && !waves.items_tree.is_empty()
@@ -494,6 +495,22 @@ impl SystemState {
                 ui.style_mut().visuals.widgets.noninteractive.bg_stroke =
                     Stroke::from(&self.user.config.theme.viewport_separator);
 
+                if self.user.show_annotation_list {
+                    let Some(waves) = self.user.waves.as_ref() else {
+                        return msgs;
+                    };
+                    Panel::right("Annotation list")
+                        .default_size(290.)
+                        .size_range(100.0..=max_width)
+                        .frame(Frame {
+                            fill: self.user.config.theme.primary_ui_color.background,
+                            ..Default::default()
+                        })
+                        .show_inside(ui, |ui| {
+                            waves.draw_annotation_list(ui, waves,&mut msgs);
+                        });
+                }
+
                 let number_of_viewports = self.user.waves.as_ref().unwrap().viewports.len();
                 if number_of_viewports > 1 {
                     // Draw additional viewports
@@ -559,10 +576,14 @@ impl SystemState {
             });
         });
 
-        // If some dialogs are open, skip decoding keypresses
-        if !self.user.show_url_entry && self.user.show_reload_suggestion.is_none() {
+        // If egui want keyboard inputs, skip decoding keypresses
+        if !self.user.show_url_entry
+            && self.user.show_reload_suggestion.is_none()
+            && !ui.egui_wants_keyboard_input()
+        {
             self.handle_pressed_keys(ui, &mut msgs);
         }
+
         msgs
     }
 

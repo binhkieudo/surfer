@@ -458,6 +458,8 @@ pub enum Message {
         rect: Rect,
         color: Color32,
         width: f32,
+        name: String,
+        group_name: Option<String>,
     },
     AddArrow {
         head_mode: ArrowHeadMode,
@@ -469,5 +471,17 @@ pub enum Message {
         color: Color32,
         width: f32,
         head_mode: ArrowHeadMode,
+        group_name: Option<String>,
     },
+    RemoveAnnotation(Id),
+    ToggleAnnotationVisiblility(Id),
+    GoToAnnotationPosition(Id, usize),
+    UpdateAnnotationName(Id,String),
+    SetAnnotationlistVisible(), //TODO: Change name to toggle
+    ShowAnnotationlist,
+    CreateAnnotationGroup(String),
+    DeleteAnnotationGroup(String),
+    UpdateAnnotationGroup(Id, Option<String>),
+    SetGroupVisibility(Option<String>, bool),
+    AnnotationClicked(Id),
 }
