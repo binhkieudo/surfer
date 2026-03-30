@@ -2,7 +2,7 @@ use bytes::Bytes;
 use camino::Utf8PathBuf;
 use derive_more::Debug;
 use egui::{Color32, DroppedFile, Id, Rect};
-use emath::{Pos2, Vec2};
+use emath::{Pos2, RectTransform, Vec2};
 use ftr_parser::types::Transaction;
 use num::BigInt;
 use serde::Deserialize;
@@ -22,7 +22,6 @@ use crate::transaction_container::{
     StreamScopeRef, TransactionContainer, TransactionRef, TransactionStreamRef,
 };
 use crate::translation::DynTranslator;
-use crate::view::DrawingContext;
 use crate::viewport::ViewportStrategy;
 use crate::wave_data::ScopeType;
 use crate::{
@@ -477,6 +476,18 @@ pub enum Message {
     UpdateAnnotationGroup(Id, Option<String>),
     SetGroupVisibility(Option<String>, bool),
     UpdateAnnotationName(Id, String),
-    AnnotationClicked(Option<Id>),
+    AnnotationClicked(
+        Option<Id>,
+        Option<Pos2>,
+        Option<usize>,
+        Option<RectTransform>,
+        Option<f32>,
+    ),
     SetActiveViewport(usize),
+    AddComment {
+        time_anchor: BigInt,
+        y_anchor: f32,
+        annotation_id: Id,
+    },
+    ClickHandled(),
 }

@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::arrow::{ArrowHeadMode, WavePoint};
 use crate::config::{SurferConfig, SurferTheme};
-use crate::graphics::{Anchor, GrPoint, GraphicsY};
+use crate::graphics::{Anchor, GraphicsY};
 use crate::time::TimeFormatter;
 use crate::view::DrawingContext;
 use crate::{Message, SystemState, wave_data::WaveData};

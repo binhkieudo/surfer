@@ -88,35 +88,18 @@ impl WaveData {
                         // Keep focus here so users can type the next group immediately
                         text_edit_res.request_focus();
                     }
+            // delete group when user press plus button
+            if ui
+                .button(icons::DELETE_BIN_LINE)
+                .on_hover_text("Delete Group")
+                .clicked()
+            {
+                if !buffer.is_empty() {
+                    msgs.push(Message::DeleteAnnotationGroup(buffer.trim().to_string()));
+                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
                 }
-
-                // create group when user press plus button
-                if ui
-                    .button(icons::ADD_LINE)
-                    .on_hover_text("Create Group")
-                    .clicked()
-                {
-                    if !buffer.is_empty() {
-                        let group_name = buffer.trim().to_string();
-                        if !waves.available_groups.contains(&group_name) {
-                            msgs.push(Message::CreateAnnotationGroup(group_name));
-                        }
-                        ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                    }
-                }
-
-                // delete group when user press plus button
-                if ui
-                    .button(icons::DELETE_BIN_LINE)
-                    .on_hover_text("Delete Group")
-                    .clicked()
-                {
-                    if !buffer.is_empty() {
-                        msgs.push(Message::DeleteAnnotationGroup(buffer.trim().to_string()));
-                        ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                    }
-                }
-            });
+            }
+        }});
 
             ui.add_space(4.0);
             ui.separator();

@@ -511,6 +511,8 @@ impl SystemState {
                         });
                 }
 
+                self.click_handled = false;
+
                 let number_of_viewports = self.user.waves.as_ref().unwrap().viewports.len();
                 if number_of_viewports > 1 {
                     // Draw additional viewports
@@ -537,6 +539,9 @@ impl SystemState {
                     })
                     .show_inside(ui, |ui| {
                         self.draw_items(ui, &mut msgs, 0);
+                        if ui.input(|i| i.pointer.primary_clicked()) && !self.click_handled {
+                            msgs.push(Message::AnnotationClicked(None, None, None, None, None));
+                        }
                     });
                 ui.style_mut().visuals.widgets.noninteractive.bg_stroke = std_stroke;
             }
@@ -575,6 +580,11 @@ impl SystemState {
                 msgs.push(Message::FileDropped(file.clone()));
             });
         });
+
+        // If some dialogs are open, skip decoding keypresses
+        // if !self.user.show_url_entry && self.user.show_reload_suggestion.is_none() {
+        //     self.handle_pressed_keys(ctx, &mut msgs);
+        // }
 
         // If egui want keyboard inputs, skip decoding keypresses
         if !self.user.show_url_entry

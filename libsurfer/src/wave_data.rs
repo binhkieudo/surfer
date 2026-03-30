@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use egui::Id;
+use egui::{Id, Pos2};
 use eyre::{Result, WrapErr as _};
 use num::bigint::ToBigInt as _;
 use num::{BigInt, BigUint, One, ToPrimitive, Zero};
@@ -9,6 +9,7 @@ use surfer_translation_types::{TranslationPreference, Translator, VariableValue}
 use tracing::{error, info, warn};
 
 use crate::annotation::{Annotatable, Annotation};
+use crate::comment::Comment;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     DisplayedDivider, DisplayedFieldRef, DisplayedGroup, DisplayedItem, DisplayedItemRef,
@@ -73,6 +74,8 @@ pub struct WaveData {
     pub annotation_list_visible: bool,
     pub annotation_counter: i32,
     pub last_active_viewport_idx: usize,
+    pub(crate) annotation_menu_pos: Option<Pos2>,
+    pub annotation_menu_time: Option<BigInt>,
 
     pub focused_item: Option<VisibleItemIndex>,
     pub focused_transaction: (Option<TransactionRef>, Option<Transaction>),
@@ -209,6 +212,8 @@ impl WaveData {
             annotation_list_visible: false,
             annotation_counter: self.annotation_counter,
             last_active_viewport_idx: 0,
+            annotation_menu_pos: None,
+            annotation_menu_time: None,
             focused_item: self.focused_item,
             focused_transaction: self.focused_transaction,
             default_variable_name_type: self.default_variable_name_type,

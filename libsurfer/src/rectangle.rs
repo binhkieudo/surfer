@@ -1,6 +1,7 @@
 //use egui::{Ui, Response, Widget};
 use crate::{annotation::{Annotatable, AnnotationData}, config::SurferTheme, displayed_item::DisplayedItemRef, graphics::GraphicsY, message::Message, view::DrawingContext, viewport::Viewport, wave_data::WaveData};
 use egui::{Id, Pos2, Rect, Response, Sense, Stroke, Ui, Widget};
+use emath::RectTransform;
 use num::BigInt;
 
 const DEFAULT_TYPE: &str = "Rectangle";
@@ -50,10 +51,6 @@ impl RectAnnotation {
         self.annotation_data.id
     }
 
-    pub fn get_time_at_start(&self) -> BigInt {
-        return (&self.from.time + &self.to.time) / 2;
-    }
-
     pub fn get_pos(
         &self,
         waves: &WaveData,
@@ -82,6 +79,10 @@ impl RectAnnotation {
 
         Some((ctx.to_screen)(min_x, min_y))
     }
+}
+
+pub(crate) fn calculate_y(wave: Option<GraphicsY>, waves: &WaveData) -> Option<f32> {
+    wave.as_ref().and_then(|from| waves.get_item_y(from))
 }
 
 impl Annotatable for RectAnnotation {
@@ -126,17 +127,6 @@ impl Annotatable for RectAnnotation {
         (&self.from.time + &self.to.time) / 2
     }
 
-    fn menu_position(
-        &self,
-        waves: &WaveData,
-        viewport: &Viewport,
-        ctx: &mut DrawingContext,
-        y_offset: f32,
-    ) -> Pos2 {
-        self.get_pos(waves, viewport, ctx, y_offset)
-            .unwrap_or(Pos2::ZERO)
-    }
-
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
         self.from
             .wave
@@ -158,20 +148,15 @@ impl Annotatable for RectAnnotation {
         theme: &SurferTheme,
         msgs: &mut Vec<Message>,
         y_offset: f32,
+        to_screen: RectTransform,
     ) {
         if self.is_visible() {
             let mut rectangle_annotation = self.clone();
             let viewport = waves.viewports[viewport_idx];
-            let from_y = rectangle_annotation
-                .from
-                .wave
-                .as_ref()
-                .and_then(|from| waves.get_item_y(from));
-            let to_y = rectangle_annotation
-                .to
-                .wave
-                .as_ref()
-                .and_then(|to| waves.get_item_y(to));
+
+            let from_y = calculate_y(rectangle_annotation.from.wave.clone(), waves);
+
+            let to_y = calculate_y(rectangle_annotation.to.wave.clone(), waves);
 
             if let Some(to_y) = to_y
                 && let Some(from_y) = from_y
@@ -203,10 +188,27 @@ impl Annotatable for RectAnnotation {
 
                 if res.clicked_by(egui::PointerButton::Primary) {
                     msgs.push(Message::SetActiveViewport(viewport_idx));
-                    msgs.push(Message::AnnotationClicked(Some(self.annotation_data.id)));
+                    //waves.set_annotation_menu_pos_time(res.interact_pointer_pos().unwrap(), to_screen,viewport_idx, ctx.cfg.canvas_width);
+                    msgs.push(Message::AnnotationClicked(
+                        Some(self.annotation_data.id),
+                        res.interact_pointer_pos(),
+                        Some(viewport_idx),
+                        Some(to_screen),
+                        Some(ctx.cfg.canvas_size.x),
+                    ));
+                    msgs.push(Message::ClickHandled());
                 }
             }
         }
+    }
+    
+    fn get_time_at_end(&self) -> BigInt {
+        return self.to.time.clone();
+    }
+
+    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32 {
+        //TODO: Make safer
+        calculate_y(self.to.wave.clone(), waves).unwrap()
     }
 }
 
@@ -267,20 +269,3 @@ impl Widget for RectAnnotation {
         }
     }
 }
-
-// impl Default for RectAnnotation {
-//     fn default() -> RectAnnotation {
-//         RectAnnotation {
-//             // Generates a stable ID from a string hash
-//             id: egui::Id::new("default_rect_annotation"),
-//             from: AnchorPoint::default(),
-//             to: AnchorPoint::default(),
-//             rect: Rect::ZERO,
-//             color: egui::Color32::from_rgb(255, 255, 255),
-//             width: 0.0,
-//             name: None,
-//             group_name: None,
-//             visible: true,
-//         }
-//     }
-// }

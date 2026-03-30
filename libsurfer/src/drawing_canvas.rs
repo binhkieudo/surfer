@@ -20,6 +20,7 @@ use crate::CachedDrawData::TransactionDrawData;
 use crate::analog_renderer::{AnalogDrawingCommand, variable_analog_draw_commands};
 use crate::clock_highlighting::draw_clock_edge_marks;
 use crate::config::SurferTheme;
+//use crate::comment::Comment;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     AnalogSettings, DisplayedFieldRef, DisplayedItemRef, DisplayedVariable,
@@ -676,7 +677,7 @@ impl SystemState {
     }
 
     // Transform from screen coordinates taking timeline into account if `consider_timeline` is true.
-    fn transform_pos(
+    pub fn transform_pos(
         &self,
         to_screen: RectTransform,
         p: Pos2,
@@ -975,13 +976,23 @@ impl SystemState {
             msgs,
             annotation_offset,
             response.rect,
+            to_screen,
+            frame_size,
+        );
+        
+        self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
+
+        let mut temp_comments = self.comments.clone();
+
+        waves.draw_comments(
+            ui,
+            &waves.viewports[viewport_idx],
+            &mut ctx,
+            &mut temp_comments,
+            annotation_offset,
         );
 
-        if ui.input(|i| i.pointer.primary_clicked()) && !ui.ctx().is_pointer_over_egui() {
-            msgs.push(Message::AnnotationClicked(None));
-        }
-
-        self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
+        self.comments = temp_comments;
     }
 
     fn draw_wave_data(

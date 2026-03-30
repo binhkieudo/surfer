@@ -13,7 +13,7 @@ use surfer_translation_types::translator::VariableNameInfo;
 use std::rc::Rc;
 
 use crate::{
-    CachedDrawData, CanvasState, Channels, WcpClientCapabilities, annotation_list::AnnotationList, command_prompt, displayed_item::DisplayedItemRef, frame_buffer::{FrameBufferArrayCache, FrameBufferContent, FrameBufferPixelCache}, hierarchy::{AllVariableCacheKey, ScopeExpandType, VariableListRow}, message::Message, state::UserState, time::TimeInputState, translation::{TranslatorList, all_translators}, wave_container::VariableRef, wave_source::{LoadOptions, LoadProgress}
+    CachedDrawData, CanvasState, Channels, WcpClientCapabilities, annotation_list::AnnotationList, command_prompt, comment::Comment, displayed_item::DisplayedItemRef, frame_buffer::{FrameBufferArrayCache, FrameBufferContent, FrameBufferPixelCache}, hierarchy::{AllVariableCacheKey, ScopeExpandType, VariableListRow}, message::Message, state::UserState, time::TimeInputState, translation::{TranslatorList, all_translators}, wave_container::VariableRef, wave_source::{LoadOptions, LoadProgress}
 };
 
 #[cfg(feature = "performance_plot")]
@@ -113,10 +113,12 @@ pub struct SystemState {
     pub(crate) expand_parameter_section: bool,
 
     pub(crate) add_rectangle: bool,
-    pub(crate) next_id_source: u64, // Increment this every time rect(annotation) is added
+    pub(crate) comments: Vec<Comment>,
+    pub(crate) annotation_id_source: u64,
     pub(crate) add_arrow: bool,
     pub(crate) add_double_headed_arrow: bool,
     pub(crate) add_simple_arrow: bool,
+    pub(crate) click_handled: bool,
 }
 
 impl SystemState {
@@ -183,11 +185,12 @@ impl SystemState {
             undo_stack: vec![],
             redo_stack: vec![],
             add_rectangle: false,
-            next_id_source: 0,
-
+            comments: Vec::new(),
+            annotation_id_source: 0,
             add_arrow: false,
             add_simple_arrow: false,
             add_double_headed_arrow: false,
+            click_handled: false,
         };
 
         Ok(result)

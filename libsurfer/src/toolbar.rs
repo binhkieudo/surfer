@@ -371,7 +371,7 @@ impl SystemState {
                 icons::EDIT_BOX_LINE,
                 "Add Rectangle",
                 Message::AddRectangle,
-                wave_loaded & !self.add_rectangle,
+                wave_loaded && !self.add_rectangle,
             );
 
             add_toolbar_button(

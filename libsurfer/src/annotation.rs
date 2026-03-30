@@ -1,7 +1,8 @@
 use egui::{
-    Align, Area, Button, Color32, Frame, Id, Layout, Order, Pos2, RichText, Stroke, Ui, UiBuilder, debug_text::print
+    Align, Area, Button, Color32, Frame, Id, Layout, Order, Pos2, RichText, Stroke, Ui, UiBuilder, Vec2, debug_text::print
 };
 use egui_remixicon::icons;
+use emath::RectTransform;
 use num::BigInt;
 use serde::Serialize;
 
@@ -46,7 +47,6 @@ pub enum Annotation {
     Arrow(ArrowAnnotation),
     Rect(RectAnnotation),
 }
-
 impl Annotatable for Annotation {
     fn get_id(&self) -> Id {
         match self {
@@ -118,19 +118,6 @@ impl Annotatable for Annotation {
         }
     }
 
-    fn menu_position(
-        &self,
-        waves: &WaveData,
-        viewport: &Viewport,
-        ctx: &mut DrawingContext,
-        y_offset: f32,
-    ) -> Pos2 {
-        match self {
-            Annotation::Arrow(a) => a.menu_position(waves, viewport, ctx, y_offset),
-            Annotation::Rect(r) => r.menu_position(waves, viewport, ctx, y_offset),
-        }
-    }
-
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
         match self {
             Annotation::Arrow(a) => a.is_attached(removed_ref),
@@ -147,10 +134,42 @@ impl Annotatable for Annotation {
         theme: &SurferTheme,
         msgs: &mut Vec<Message>,
         y_offset: f32,
+        to_screen: RectTransform,
     ) {
         match self {
-            Annotation::Arrow(a) => a.draw(ui, waves, viewport_idx, ctx, theme, msgs, y_offset),
-            Annotation::Rect(r) => r.draw(ui, waves, viewport_idx, ctx, theme, msgs, y_offset),
+            Annotation::Arrow(a) => a.draw(
+                ui,
+                waves,
+                viewport_idx,
+                ctx,
+                theme,
+                msgs,
+                y_offset,
+                to_screen,
+            ),
+            Annotation::Rect(r) => r.draw(
+                ui,
+                waves,
+                viewport_idx,
+                ctx,
+                theme,
+                msgs,
+                y_offset,
+                to_screen,
+            ),
+        }
+    }
+    fn get_time_at_end(&self) -> BigInt {
+        match self {
+            Annotation::Arrow(a) => a.get_time_at_end(),
+            Annotation::Rect(r) => r.get_time_at_end(),
+        }
+    }
+
+    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32 {
+        match self {
+            Annotation::Arrow(a) => a.get_lowest_y_pos(waves),
+            Annotation::Rect(r) => r.get_lowest_y_pos(waves),
         }
     }
 }
@@ -167,13 +186,6 @@ pub trait Annotatable {
     fn is_visible(&self) -> bool;
     //fn toggle_visibility(&mut self);
     fn get_time_at_start(&self) -> BigInt; //?
-    fn menu_position(
-        &self,
-        waves: &WaveData,
-        viewport: &Viewport,
-        ctx: &mut DrawingContext,
-        y_offset: f32,
-    ) -> Pos2;
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool;
     fn draw(
         &self,
@@ -184,6 +196,7 @@ pub trait Annotatable {
         theme: &SurferTheme,
         msgs: &mut Vec<Message>,
         y_offset: f32,
+        to_screen: RectTransform,
     );
     fn draw_quick_menu(
         &self,
@@ -194,9 +207,11 @@ pub trait Annotatable {
         ctx: &mut DrawingContext,
         y_offset: f32,
         viewport_rect: egui::Rect,
+        position: Pos2,
     ) {
         let id = self.get_id();
-        let position = self.menu_position(waves, viewport, ctx, y_offset);
+        let num_timestamps = &waves.safe_num_timestamps();
+
         let menu_rect = egui::Rect::from_min_size(position, egui::vec2(0.0, 0.0)); //TODO: Magic nums
 
         if !viewport_rect.intersects(menu_rect) {
@@ -241,13 +256,23 @@ pub trait Annotatable {
                             if ui.button(icons::DELETE_BIN_LINE).clicked() {
                                 msgs.push(Message::RemoveAnnotation(id));
                             }
+                            if ui.button(icons::CHAT_4_LINE).clicked() {
+                            let cursor_pos = ui.ctx().pointer_hover_pos().unwrap_or_default();
+                            let time_anchor = viewport.as_time_bigint(
+                                cursor_pos.x,
+                                ctx.cfg.canvas_size.x,
+                                num_timestamps,
+                            );
+
+                            msgs.push(Message::AddComment {
+                                time_anchor: time_anchor,
+                                y_anchor: cursor_pos.y,
+                                annotation_id: id,
+                            })
+                        }
                         });
                     });
             });
-
-        if ui.input(|i| i.pointer.primary_clicked()) && !ui.ctx().is_pointer_over_area() {
-            msgs.push(Message::AnnotationClicked(None));
-        }
     }
     fn draw_hover_info(&self, ui: &mut egui::Ui) {
         ui.label(format!("Type: {}", self.get_type()));
@@ -260,6 +285,9 @@ pub trait Annotatable {
         ));
         ui.label(format!("Visible: {}", self.is_visible()));
     }
+    fn get_time_at_end(&self) -> BigInt;
+    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32;
+
 }
 
 impl WaveData {
@@ -278,16 +306,74 @@ impl WaveData {
         msgs: &mut Vec<Message>,
         y_offset: f32,
         viewport_rect: egui::Rect,
+        to_screen: RectTransform,
+        frame_size: Vec2,
     ) {
+        let num_timestamps = self.safe_num_timestamps();
+
         for annotation in &self.annotations {
-            annotation.draw(ui, &self, viewport_idx, ctx, theme, msgs, y_offset);
+            annotation.draw(
+                ui,
+                &self,
+                viewport_idx,
+                ctx,
+                theme,
+                msgs,
+                y_offset,
+                to_screen,
+            );
 
             if self.selected_annotation == Some(annotation.get_id())
                 && viewport_idx == self.last_active_viewport_idx
             {
-                annotation.draw_quick_menu(ui, msgs, &self, viewport, ctx, y_offset, viewport_rect);
+                let mut menu_position = self.annotation_menu_pos.unwrap();
+                let menu_time = self.annotation_menu_time.clone().unwrap();
+
+                menu_position.x = viewport.pixel_from_time(
+                    &menu_time,
+                    ctx.cfg.canvas_size.x,
+                    &self.safe_num_timestamps(),
+                );
+                let temp_y = menu_position.y;
+                menu_position = (ctx.to_screen)(menu_position.x, menu_position.y);
+                menu_position.y = temp_y;
+
+                annotation.draw_quick_menu(
+                    ui,
+                    msgs,
+                    &self,
+                    viewport,
+                    ctx,
+                    y_offset,
+                    viewport_rect,
+                    menu_position,
+                );
+
                 //annotation.is_selected();
             }
         }
+    }
+
+    // TODO: is not used, should we let the logic stay in lib?
+    pub fn set_annotation_menu_pos_time(
+        &mut self,
+        menu_pos: Pos2,
+        to_screen: RectTransform,
+        viewport_idx: usize,
+        frame_width: f32,
+    ) {
+        let num_timestamps: BigInt = self.safe_num_timestamps();
+
+        let menu_pos_local = to_screen.inverse().transform_pos(menu_pos);
+
+        let menu_pos_time: BigInt = self.viewports[viewport_idx].as_time_bigint(
+            menu_pos_local.x, // HÄR blir felet. jag måste få in x lokalt
+            frame_width,
+            &num_timestamps,
+        );
+
+        self.annotation_menu_time = Some(menu_pos_time);
+
+        self.annotation_menu_pos = Some(menu_pos);
     }
 }

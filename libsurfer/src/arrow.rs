@@ -4,11 +4,11 @@ use crate::config::SurferTheme;
 use crate::displayed_item::{DisplayedItem, DisplayedItemRef};
 use crate::graphics::Graphic;
 use crate::message::Message;
-use crate::view::GroupDrawingInfo;
 use crate::{Viewport, view::DrawingContext, wave_data::WaveData};
 
-use chrono::{DateTime, Local, offset};
-use egui::{Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
+use chrono::{DateTime, Local};
+use egui::{Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
+use emath::RectTransform;
 use num::BigInt;
 use serde::{Deserialize, Serialize};
 
@@ -24,8 +24,8 @@ pub enum ArrowDisplayMode {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ArrowHeadMode {
-    End,    // vanlig pil
-    Double, // dubbelriktad pil
+    End,    // one headed arrow
+    Double, // dubbelheaded arrow
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -160,19 +160,9 @@ impl Annotatable for ArrowAnnotation {
     fn is_visible(&self) -> bool {
         self.annotation_data.visible
     }
-    //fn toggle_visibility(&mut self);
+
     fn get_time_at_start(&self) -> BigInt {
         (&self.from.time + &self.to.time) / 2
-    }
-
-    fn menu_position(
-        &self,
-        waves: &WaveData,
-        viewport: &Viewport,
-        ctx: &mut DrawingContext,
-        y_offset: f32,
-    ) -> Pos2 {
-        self.to.screen_pos
     }
 
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
@@ -188,6 +178,7 @@ impl Annotatable for ArrowAnnotation {
         theme: &SurferTheme,
         msgs: &mut Vec<Message>,
         y_offset: f32,
+        to_screen: RectTransform,
     ) {
         let mut arrow_annotation = self.clone();
 
@@ -198,9 +189,14 @@ impl Annotatable for ArrowAnnotation {
             arrow_annotation.is_selected();
         }
 
+        let num_timestamps: BigInt = waves.safe_num_timestamps();
+        let viewport = waves.viewports[viewport_idx];
+        let frame_width = ctx.cfg.canvas_size.x;
+
         arrow_annotation.annotation_data.id =
             egui::Id::new(("arrow", self.annotation_data.id, viewport_idx));
 
+        // item_center_y returns position in global coordinates so we do not need to converte it with ctx.to_screeen
         let to_y = match self.to.attached_item.as_ref() {
             Some(item_ref) => match item_center_y(waves, item_ref) {
                 Some(y) => y,
@@ -224,29 +220,23 @@ impl Annotatable for ArrowAnnotation {
         let viewport = waves.viewports[viewport_idx];
         let frame_width = ctx.cfg.canvas_size.x;
 
+        //pixel_from_time returns local coordinates converte with ctx.to_screen to get the global coordinates
         let new_to_x =
             viewport.pixel_from_time(&arrow_annotation.to.time, frame_width, &num_timestamps);
 
         let new_from_x =
             viewport.pixel_from_time(&arrow_annotation.from.time, frame_width, &num_timestamps);
 
-        let mut new_to = (ctx.to_screen)(new_to_x, to_y);
+        let mut new_to: Pos2 = (ctx.to_screen)(new_to_x, to_y);
         let mut new_from = (ctx.to_screen)(new_from_x, from_y);
 
         new_to.y = to_y;
         new_from.y = from_y;
 
-        if !new_to.x.is_finite()
-            || !new_to.y.is_finite()
-            || !new_from.x.is_finite()
-            || !new_from.y.is_finite()
-        {
-            return;
-        }
-
         arrow_annotation.to.screen_pos = new_to;
         arrow_annotation.from.screen_pos = new_from;
 
+        //get hover/click position for hit detection
         let pointer_hover_pos = ui.input(|i| i.pointer.hover_pos());
         let pointer_click_pos = ui.input(|i| i.pointer.interact_pos());
         let primary_clicked = ui.input(|i| i.pointer.primary_clicked());
@@ -260,15 +250,18 @@ impl Annotatable for ArrowAnnotation {
                 .and_then(|p| arrow_annotation.hit_distance_screen(p))
                 .is_some();
 
-        //let _response = ui.add(arrow_annotation);
-
-        let _response = ui.add(arrow_annotation);
+        let _response: Response = ui.add(arrow_annotation);
 
         if exact_clicked {
-            //waves.selected_annotation = Some(arrow_annotation.annotation_data.id);
             msgs.push(Message::SetActiveViewport(viewport_idx));
-            msgs.push(Message::AnnotationClicked(Some(self.annotation_data.id)));
-            println!("clicked");
+            msgs.push(Message::AnnotationClicked(
+                Some(self.annotation_data.id),
+                pointer_click_pos,
+                Some(viewport_idx),
+                Some(to_screen),
+                Some((ctx.cfg.canvas_size.x)),
+            ));
+            msgs.push(Message::ClickHandled());
         }
 
         if exact_hovered {
@@ -284,6 +277,32 @@ impl Annotatable for ArrowAnnotation {
                 hover_response.on_hover_ui(|ui| {
                     self.draw_hover_info(ui);
                 });
+            }
+        }
+    }
+    
+    fn get_time_at_end(&self) -> BigInt {
+        return self.from.time.clone();
+    }
+    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32 {
+        let to_y = match self.to.attached_item.as_ref() {
+            Some(item_ref) => match item_center_y(waves, item_ref) {
+                Some(y) => y,
+                None => 0.,
+            },
+            None => 0.,
+        };
+        match self.head_mode {
+            ArrowHeadMode::End => to_y - self.y_offset,
+            ArrowHeadMode::Double => {
+                let from_y = match self.from.attached_item.as_ref() {
+                    Some(item_ref) => match item_center_y(waves, item_ref) {
+                        Some(y) => y,
+                        None => 0.,
+                    },
+                    None => 0.,
+                };
+                (to_y + from_y) / 2.
             }
         }
     }
@@ -319,10 +338,6 @@ impl ArrowAnnotation {
         self.display_mode = ArrowDisplayMode::FullArrow;
     }
 
-    // pub fn marker_pos(&self) -> Pos2 {
-    //     self.to.screen_pos
-    // }
-
     pub fn created_at_string(&self) -> String {
         self.created_at.format("%Y-%m-%d %H:%M").to_string()
     }
@@ -340,8 +355,8 @@ impl ArrowAnnotation {
         self.annotation_data.stroke + 4.0
     }
 
+    /*returns points of interest of arrow, start, end and arrow head points.  */
     fn segments(&self) -> Option<ArrowSegments> {
-        //få frame pilens viktiga punkter start slut pilens huvud
         let end_head = arrow_geometry(
             self.from.screen_pos,
             self.to.screen_pos,
@@ -445,15 +460,15 @@ impl ArrowAnnotation {
 
                 let mut best = f32::INFINITY;
 
-                // Skaftet
+                // compare to the shaft
                 best = best.min(distance_to_segment(pointer, seg.shaft_start, seg.shaft_end));
 
-                // Slut-huvudet, 3 segment
+                // compare to the end point 3 segment
                 best = best.min(distance_to_segment(pointer, seg.end_tip, seg.end_left));
                 best = best.min(distance_to_segment(pointer, seg.end_tip, seg.end_right));
                 best = best.min(distance_to_segment(pointer, seg.end_left, seg.end_right));
 
-                // Start-huvudet om dubbelpil
+                // compare to the arrow head at start, if it is dubbelheaded arrow.
                 if let (Some(start_tip), Some(start_left), Some(start_right)) =
                     (seg.start_tip, seg.start_left, seg.start_right)
                 {
@@ -466,6 +481,8 @@ impl ArrowAnnotation {
             }
         }
     }
+
+    /*returns arrow end_position, global coordinates */
     pub fn get_pos(
         &self,
         waves: &WaveData,
@@ -476,13 +493,11 @@ impl ArrowAnnotation {
         let num_timestamps = waves.safe_num_timestamps();
 
         let to_x = viewport.pixel_from_time(&self.to.time, ctx.cfg.canvas_size.x, &num_timestamps);
-        // let x2 =
-        //     viewport.pixel_from_time(&self.from.time, ctx.cfg.canvas_width, &num_timestamps);
-
-        //let from_y = self.wave_from.as_ref().and_then(|from| waves.get_item_y(from))?;
         let to_y = self.to.screen_pos.y;
         let mut position = (ctx.to_screen)(to_x, to_y);
-        position.y = to_y + offset_y; // Justera y-positionen baserat på offset
+        position.y = to_y + offset_y;
+
+        println!("pos: {:?} {:?}", position.x, position.y);
 
         Some(position)
     }
@@ -493,7 +508,6 @@ impl Widget for ArrowAnnotation {
         let response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::empty());
         match self.display_mode {
             ArrowDisplayMode::Dot => {
-                // rita först sen kalla på coarse_hit_rect för att lägga till hit boxarna
                 let radius = (self.annotation_data.stroke * 2.0).max(4.0);
 
                 ui.painter()
@@ -510,16 +524,15 @@ impl Widget for ArrowAnnotation {
                 let hit_rect = self.coarse_hit_rect();
                 ui.interact(hit_rect, self.annotation_data.id, Sense::click())
             }
-
             ArrowDisplayMode::FullArrow => {
                 let stroke = Stroke::new(self.annotation_data.stroke, self.annotation_data.color);
 
                 if let Some(seg) = self.segments() {
-                    // Skaftet
+                    // paint shaft
                     ui.painter()
                         .line_segment([seg.shaft_start, seg.shaft_end], stroke);
 
-                    // Slut-huvudet
+                    // paint arrow head at the end of the arrow
                     ui.painter()
                         .line_segment([seg.end_tip, seg.end_left], stroke);
                     ui.painter()
@@ -527,7 +540,7 @@ impl Widget for ArrowAnnotation {
                     ui.painter()
                         .line_segment([seg.end_left, seg.end_right], stroke);
 
-                    // Start-huvudet om dubbelpil
+                    // paint arrow head at the start if it is a dubbelheaded arrow.
                     if let (Some(start_tip), Some(start_left), Some(start_right)) =
                         (seg.start_tip, seg.start_left, seg.start_right)
                     {

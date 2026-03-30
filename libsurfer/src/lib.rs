@@ -13,6 +13,7 @@ mod channels;
 pub mod clock_highlighting;
 pub mod command_parser;
 pub mod command_prompt;
+pub mod comment;
 pub mod config;
 pub mod cxxrtl;
 pub mod cxxrtl_container;
@@ -72,17 +73,16 @@ pub mod wellen;
 
 use crate::annotation::Annotatable;
 use crate::annotation::Annotation;
-use crate::annotation::AnnotationData;
 use crate::arrow::ArrowAnnotation;
 use crate::arrow::ArrowHeadMode;
 use crate::channels::checked_send;
+use crate::comment::Comment;
 use crate::config::AutoLoad;
 use crate::displayed_item_tree::ItemIndex;
 use crate::displayed_item_tree::TargetPosition;
 use crate::rectangle::RectAnnotation;
 use crate::remote::get_time_table_from_server;
 use crate::variable_name_type::VariableNameType;
-use crate::view::DrawingContext;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -99,6 +99,8 @@ use displayed_item_tree::DisplayedItemTree;
 use eframe::{App, CreationContext};
 use egui::Color32;
 use egui::Id;
+use egui::Pos2;
+use egui::Rect;
 use egui::{FontData, FontDefinitions, FontFamily};
 use eyre::{Result, WrapErr as _};
 use ftr_parser::types::Transaction;
@@ -2281,7 +2283,11 @@ impl SystemState {
                 self.items_to_expand.borrow_mut().push((item, levels));
             }
             Message::AddRectangle => {
-                self.add_arrow = false; // turn of arrow maker
+                // disable arrow maker
+                self.add_arrow = false;
+                self.add_simple_arrow = false;
+                self.add_double_headed_arrow = false;
+
                 if self.add_rectangle {
                     self.add_rectangle = false;
                 } else {
@@ -2302,7 +2308,7 @@ impl SystemState {
                 waves.annotations.push(Annotation::Rect(RectAnnotation::new(
                     id,
                     time_at_start,
-                    time_at_end,
+                    time_at_end.clone(),
                     wave_from,
                     wave_to,
                     rect,
@@ -2459,9 +2465,24 @@ impl SystemState {
                     }
                 }
             }
-            Message::AnnotationClicked(id) => {
+
+            Message::AnnotationClicked(id, menu_pos, viewport_idx, to_screen, frame_width) => {
                 if let Some(waves) = self.user.waves.as_mut() {
                     waves.select_annotation(id);
+
+                    let num_timestamps: BigInt = waves.safe_num_timestamps();
+
+                    let menu_pos_local = to_screen?.inverse().transform_pos(menu_pos?);
+
+                    let menu_pos_time: BigInt = waves.viewports[viewport_idx?].as_time_bigint(
+                        menu_pos_local.x,
+                        frame_width?,
+                        &num_timestamps,
+                    );
+
+                    waves.annotation_menu_time = Some(menu_pos_time);
+
+                    waves.annotation_menu_pos = if id.is_some() { menu_pos } else { None };
                 }
             }
 
@@ -2472,14 +2493,53 @@ impl SystemState {
                     }
                 }
             }
+            Message::AddComment {
+                time_anchor,
+                y_anchor,
+                annotation_id,
+            } => {
+                let mut comment = comment::Comment {
+                    id: egui::Id::new(("comment", self.annotation_id_source)),
+                    annotation_id: annotation_id,
+                    rect: egui::Rect::ZERO,
+                    color: egui::Color32::WHITE,
+                    x_offset: 0.0,
+                    y_offset: 0.0,
+                    time_anchor: time_anchor,
+                    x_anchor: 0.0,
+                    y_anchor: y_anchor,
+                    x_size: 100.0,
+                    y_size: 50.0,
+                    message_chain: Vec::new(),
+                    new_text: String::from(""),
+                    name: "".to_string(),
+                };
+
+                // let waves = self.user.waves.as_mut()?;
+                // for annotation in waves.annotations.iter_mut() {
+                //     if annotation.get_id() == comment.annotation_id {
+                //         comment.time_anchor = annotation.get_time_at_end();
+
+                //         comment.y_anchor = annotation.get_lowest_y_pos(waves);
+                //     }
+                // }
+
+                self.comments.push(comment);
+
+                self.annotation_id_source += 1;
+            }
+
+            Message::ClickHandled() => {
+                self.click_handled = true;
+            }
         }
         
         Some(())
     }
 
     fn annotation_id(&mut self) -> Id {
-        let id = egui::Id::new(("annotation", self.next_id_source));
-        self.next_id_source += 1;
+        let id = egui::Id::new(("annotation", self.annotation_id_source));
+        self.annotation_id_source += 1;
         id
     }
 
