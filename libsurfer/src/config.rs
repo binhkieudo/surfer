@@ -235,28 +235,16 @@ pub struct SurferLayout {
     pub zoom_factors: Vec<f32>,
     /// Default UI zoom factor
     default_zoom_factor: f32,
-    #[serde(default)]
     /// Highlight the waveform of the focused item?
     highlight_focused: bool,
     /// Move the focus to the newly inserted marker?
     move_focus_on_inserted_marker: bool,
     /// Fill high values in boolean waveforms
-    #[serde(default = "default_true")]
     fill_high_values: bool,
     /// Dinotrace drawing style (thick upper line for all-ones, no upper line for all-zeros)
-    #[serde(default)]
     use_dinotrace_style: bool,
     /// Value to display when cursor is on a transition
-    #[serde(default = "default_next")]
     transition_value: TransitionValue,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_next() -> TransitionValue {
-    TransitionValue::Next
 }
 
 impl SurferLayout {
