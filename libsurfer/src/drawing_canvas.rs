@@ -758,6 +758,13 @@ impl SystemState {
             .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false));
         let num_timestamps = waves.safe_num_timestamps();
 
+        if response.clicked_by(PointerButton::Primary)
+            || response.clicked_by(PointerButton::Secondary)
+            || response.drag_started()
+        {
+            msgs.push(Message::SetActiveViewport(viewport_idx));
+        }
+
         if ui.ui_contains_pointer() {
             let pointer_pos = pointer_pos_global.unwrap();
             let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
@@ -965,9 +972,14 @@ impl SystemState {
             viewport_idx,
             &mut ctx,
             &self.user.config.theme,
-            annotation_offset,
             msgs,
+            annotation_offset,
+            response.rect,
         );
+
+        if ui.input(|i| i.pointer.primary_clicked()) && !ui.ctx().is_pointer_over_egui() {
+            msgs.push(Message::AnnotationClicked(None));
+        }
 
         self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
     }

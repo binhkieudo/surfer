@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
+use egui::Id;
 use eyre::{Result, WrapErr as _};
 use num::bigint::ToBigInt as _;
-use num::iter::RangeInclusive;
 use num::{BigInt, BigUint, One, ToPrimitive, Zero};
 use serde::{Deserialize, Serialize};
 use surfer_translation_types::{TranslationPreference, Translator, VariableValue};
 use tracing::{error, info, warn};
 
-use crate::annotation::Annotation;
-use crate::arrow::ArrowAnnotation;
+use crate::annotation::{Annotatable, Annotation};
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     DisplayedDivider, DisplayedFieldRef, DisplayedGroup, DisplayedItem, DisplayedItemRef,
@@ -17,7 +16,6 @@ use crate::displayed_item::{
 };
 use crate::displayed_item_tree::{DisplayedItemTree, ItemIndex, TargetPosition, VisibleItemIndex};
 use crate::graphics::{Graphic, GraphicId};
-use crate::rectangle::RectAnnotation;
 use crate::transaction_container::{StreamScopeRef, TransactionRef, TransactionStreamRef};
 use crate::transactions::calculate_rows_of_stream;
 use crate::translation::{DynTranslator, TranslatorList, VariableInfoExt};
@@ -68,10 +66,13 @@ pub struct WaveData {
     pub viewports: Vec<Viewport>,
     pub cursor: Option<BigInt>,
     pub markers: HashMap<u8, BigInt>,
+    pub selected_annotation: Option<Id>,
 
     pub annotations: Vec<Annotation>,
     pub available_groups: Vec<String>, // List of unique group names
     pub annotation_list_visible: bool,
+    pub annotation_counter: i32,
+    pub last_active_viewport_idx: usize,
 
     pub focused_item: Option<VisibleItemIndex>,
     pub focused_transaction: (Option<TransactionRef>, Option<Transaction>),
@@ -203,8 +204,11 @@ impl WaveData {
             cursor: self.cursor.clone(),
             markers: self.markers.clone(),
             annotations: self.annotations.clone(),
+            selected_annotation: None,
             available_groups: Vec::new(), // List of unique group names
             annotation_list_visible: false,
+            annotation_counter: self.annotation_counter,
+            last_active_viewport_idx: 0,
             focused_item: self.focused_item,
             focused_transaction: self.focused_transaction,
             default_variable_name_type: self.default_variable_name_type,
@@ -538,23 +542,8 @@ impl WaveData {
                 self.markers.remove(&m.idx);
             }
 
-            self.annotations.retain(|annotation| match annotation {
-                Annotation::Arrow(arrow) => arrow
-                    .to
-                    .attached_item
-                    .as_ref()
-                    .is_none_or(|&item_ref| item_ref != removed_ref),
-
-                Annotation::Rect(rect) => {
-                    rect.wave_from
-                        .as_ref()
-                        .map_or(true, |from| from.item != removed_ref)
-                        && rect
-                            .wave_to
-                            .as_ref()
-                            .map_or(true, |to| to.item != removed_ref)
-                }
-            });
+            self.annotations
+                .retain(|annotation| !annotation.is_attached(&removed_ref));
         }
 
         self.focused_item = focused_item_ref.and_then(|focused_item_ref| {
@@ -622,6 +611,10 @@ impl WaveData {
             target_position,
             true,
         )
+    }
+
+    pub fn select_annotation(&mut self, id: Option<Id>) {
+        self.selected_annotation = id;
     }
 
     pub fn add_generator(&mut self, gen_ref: TransactionStreamRef) {
@@ -889,13 +882,10 @@ impl WaveData {
     }
 
     //Returns the y_value of the current visible items
-    //TODO: code duplication.
-    //TODO: Magic number.
     pub fn get_content_height(&self, offset: f32) -> f32 {
         let first_element_y = self.drawing_infos.first().unwrap().top();
         let last_element_bottom = self.drawing_infos.last().unwrap().bottom();
-        let content_height = last_element_bottom - first_element_y + offset - 0.1;
-        content_height
+        last_element_bottom - first_element_y + offset - 0.1 //0.1px margin to keep value within height limit
     }
 
     /// Find the item at a given y-location.

@@ -1,14 +1,45 @@
 use egui::{
-    Align, Area, Button, Color32, Frame, Id, Layout, Order, Pos2, RichText, Stroke, UiBuilder, debug_text::print
+    Align, Area, Button, Color32, Frame, Id, Layout, Order, Pos2, RichText, Stroke, Ui, UiBuilder, debug_text::print
 };
 use egui_remixicon::icons;
 use num::BigInt;
+use serde::Serialize;
 
 use crate::{
-    SystemState, arrow::ArrowAnnotation, config::SurferTheme, message::Message,
-    rectangle::RectAnnotation, system_state, view::DrawingContext, viewport::Viewport,
+    SystemState,
+    arrow::ArrowAnnotation,
+    config::SurferTheme,
+    displayed_item::{DisplayedItem, DisplayedItemRef},
+    message::Message,
+    rectangle::RectAnnotation,
+    system_state,
+    view::{self, DrawingContext},
+    viewport::Viewport,
     wave_data::WaveData,
 };
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct AnnotationData {
+    pub id: Id,
+    pub color: Color32,
+    pub group_name: Option<String>,
+    pub visible: bool,
+    pub name: String,
+    pub stroke: f32,
+}
+
+impl AnnotationData {
+    pub(crate) fn new(id_source: impl std::hash::Hash, name: String) -> Self {
+        AnnotationData {
+            id: Id::new(id_source),
+            group_name: None,
+            visible: true,
+            name: name,
+            color: Color32::from_rgb(255, 255, 255),
+            stroke: 2.0,
+        }
+    }
+}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Annotation {
@@ -16,164 +47,218 @@ pub enum Annotation {
     Rect(RectAnnotation),
 }
 
-impl Annotation {
-    pub fn draw_quick_menu(
-        &self,
-        annotation_id: Id,
-        position: Pos2,
-        ui: &mut egui::Ui,
-        msgs: &mut Vec<Message>,
-    ) {
-        let menu_rect = egui::Rect::from_min_size(position, egui::vec2(90.0, 28.0));
-
-        ui.scope_builder(egui::UiBuilder::new().max_rect(menu_rect), |ui| {
-            Frame::popup(ui.style())
-                .fill(ui.visuals().extreme_bg_color)
-                .stroke(Stroke::new(
-                    1.0,
-                    ui.visuals().widgets.noninteractive.bg_stroke.color,
-                ))
-                .corner_radius(8.0)
-                .inner_margin(egui::Margin::same(4))
-                .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
-
-                    ui.horizontal(|ui| {
-                        if ui.button(icons::SEARCH_LINE).clicked() {
-                            msgs.push(Message::GoToAnnotationPosition(annotation_id, 0));
-                        }
-
-                        let vis_icon = if !self.is_visible() {
-                            icons::EYE_OFF_LINE
-                        } else {
-                            icons::EYE_LINE
-                        };
-
-                        if ui.button(vis_icon).clicked() {
-                            msgs.push(Message::ToggleAnnotationVisiblility(annotation_id));
-                        }
-
-                        if ui.button(icons::DELETE_BIN_LINE).clicked() {
-                            msgs.push(Message::RemoveAnnotation(annotation_id));
-                        }
-                    });
-                });
-        });
-    }
-
-    pub fn draw_annotation_quick_menu(
-        &self,
-        ui: &mut egui::Ui,
-        ctx: &mut DrawingContext,
-        msgs: &mut Vec<Message>,
-        viewport: &Viewport,
-        waves: &WaveData,
-    ) {
+impl Annotatable for Annotation {
+    fn get_id(&self) -> Id {
         match self {
-            Annotation::Arrow(arrow) => {
-                let mut arrow_pos = arrow.get_pos(waves, viewport, ctx, 10.0).unwrap();
-                arrow_pos.x -= 20.0; // Justera positionen för att inte överlappa pilen
-                self.draw_quick_menu(arrow.id, arrow_pos, ui, msgs);
-            }
-            Annotation::Rect(rect) => {
-                let rect_pos = rect.get_pos(waves, viewport, ctx, -20.0).unwrap();
-                self.draw_quick_menu(rect.id, rect_pos, ui, msgs);
-            }
+            Annotation::Arrow(a) => a.get_id(),
+            Annotation::Rect(r) => r.get_id(),
         }
     }
 
-    pub fn clicked(id: Id, waves: &mut WaveData) {
-        for annotation in waves.annotations.iter_mut() {
-            match annotation {
-                Annotation::Arrow(arrow) => {
-                    if arrow.id == id {
-                        arrow.open_quick_menu = !arrow.open_quick_menu;
-                    }
-                }
-                Annotation::Rect(rect) => {
-                    if rect.id == id {
-                        rect.open_quick_menu = !rect.open_quick_menu;
-                    }
-                }
-            }
-        }
-    }
-    pub fn get_type(&self) -> i32 {
+    fn get_type(&self) -> &str {
         match self {
-            Annotation::Arrow(_) => 0,
-            Annotation::Rect(_) => 1,
+            Annotation::Arrow(a) => a.get_type(),
+            Annotation::Rect(r) => r.get_type(),
         }
     }
 
-    pub fn get_id(&self) -> egui::Id {
+    fn set_name(&mut self, name: String) {
         match self {
-            Annotation::Arrow(a) => a.id,
-            Annotation::Rect(r) => r.id,
+            Annotation::Arrow(a) => a.set_name(name),
+            Annotation::Rect(r) => r.set_name(name),
         }
     }
 
-    pub fn get_name(&self) -> String {
+    fn get_name(&self) -> String {
         match self {
-            Annotation::Arrow(a) => a.name.clone(),
-            Annotation::Rect(r) => r.name.clone(),
+            Annotation::Arrow(a) => a.get_name(),
+            Annotation::Rect(r) => r.get_name(),
         }
     }
 
-    pub fn group_name(&self) -> Option<String> {
+    fn set_group_name(&mut self, name: Option<String>) {
         match self {
-            Annotation::Arrow(a) => a.group_name.clone(),
-            Annotation::Rect(r) => r.group_name.clone(),
+            Annotation::Arrow(a) => a.set_group_name(name),
+            Annotation::Rect(r) => r.set_group_name(name),
         }
     }
 
-    pub fn is_visible(&self) -> bool {
+    fn get_group_name(&self) -> Option<String> {
         match self {
-            Annotation::Arrow(a) => a.visible,
-            Annotation::Rect(r) => r.visible,
+            Annotation::Arrow(a) => a.get_group_name(),
+            Annotation::Rect(r) => r.get_group_name(),
         }
     }
 
-    pub fn toggle_visibility(&mut self) {
+    fn is_selected(&mut self) {
         match self {
-            Annotation::Arrow(a) => a.toggle_arrow_visibility(),
-            Annotation::Rect(r) => r.toggle_rectangle_visiblility(),
+            Annotation::Arrow(a) => a.is_selected(),
+            Annotation::Rect(r) => r.is_selected(),
         }
     }
 
-    pub fn set_visibility(&mut self, visible: bool){
+    fn set_visibility(&mut self, visible: bool) {
         match self {
-            Annotation::Arrow(a) => a.visible = visible,
-            Annotation::Rect(r) => r.visible = visible,
+            Annotation::Arrow(a) => a.set_visibility(visible),
+            Annotation::Rect(r) => r.set_visibility(visible),
         }
     }
 
-    pub fn set_group_name(&mut self, name: Option<String>) {
+    fn is_visible(&self) -> bool {
         match self {
-            Annotation::Arrow(a) => a.group_name = name,
-            Annotation::Rect(r) => r.group_name = name,
+            Annotation::Arrow(a) => a.is_visible(),
+            Annotation::Rect(r) => r.is_visible(),
         }
     }
 
-    pub fn set_name(&mut self, name: String) {
-        match self {
-            Annotation::Arrow(a) => a.name = name,
-            Annotation::Rect(r) => r.name = name,
-        }
-    }
-
-    pub fn get_time_at_start(&self) -> BigInt {
+    fn get_time_at_start(&self) -> BigInt {
         match self {
             Annotation::Arrow(a) => a.get_time_at_start(),
             Annotation::Rect(r) => r.get_time_at_start(),
         }
     }
 
-    pub fn open_quick_menu(&self) -> bool {
+    fn menu_position(
+        &self,
+        waves: &WaveData,
+        viewport: &Viewport,
+        ctx: &mut DrawingContext,
+        y_offset: f32,
+    ) -> Pos2 {
         match self {
-            Annotation::Arrow(a) => a.open_quick_menu,
-            Annotation::Rect(r) => r.open_quick_menu,
+            Annotation::Arrow(a) => a.menu_position(waves, viewport, ctx, y_offset),
+            Annotation::Rect(r) => r.menu_position(waves, viewport, ctx, y_offset),
         }
+    }
+
+    fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
+        match self {
+            Annotation::Arrow(a) => a.is_attached(removed_ref),
+            Annotation::Rect(r) => r.is_attached(removed_ref),
+        }
+    }
+
+    fn draw(
+        &self,
+        ui: &mut Ui,
+        waves: &WaveData,
+        viewport_idx: usize,
+        ctx: &mut DrawingContext,
+        theme: &SurferTheme,
+        msgs: &mut Vec<Message>,
+        y_offset: f32,
+    ) {
+        match self {
+            Annotation::Arrow(a) => a.draw(ui, waves, viewport_idx, ctx, theme, msgs, y_offset),
+            Annotation::Rect(r) => r.draw(ui, waves, viewport_idx, ctx, theme, msgs, y_offset),
+        }
+    }
+}
+
+pub trait Annotatable {
+    fn get_id(&self) -> Id;
+    fn get_type(&self) -> &str;
+    fn set_name(&mut self, name: String);
+    fn get_name(&self) -> String;
+    fn set_group_name(&mut self, name: Option<String>);
+    fn get_group_name(&self) -> Option<String>;
+    fn is_selected(&mut self);
+    fn set_visibility(&mut self, visible: bool);
+    fn is_visible(&self) -> bool;
+    //fn toggle_visibility(&mut self);
+    fn get_time_at_start(&self) -> BigInt; //?
+    fn menu_position(
+        &self,
+        waves: &WaveData,
+        viewport: &Viewport,
+        ctx: &mut DrawingContext,
+        y_offset: f32,
+    ) -> Pos2;
+    fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool;
+    fn draw(
+        &self,
+        ui: &mut Ui,
+        waves: &WaveData,
+        viewport_idx: usize,
+        ctx: &mut DrawingContext,
+        theme: &SurferTheme,
+        msgs: &mut Vec<Message>,
+        y_offset: f32,
+    );
+    fn draw_quick_menu(
+        &self,
+        ui: &mut egui::Ui,
+        msgs: &mut Vec<Message>,
+        waves: &WaveData,
+        viewport: &Viewport,
+        ctx: &mut DrawingContext,
+        y_offset: f32,
+        viewport_rect: egui::Rect,
+    ) {
+        let id = self.get_id();
+        let position = self.menu_position(waves, viewport, ctx, y_offset);
+        let menu_rect = egui::Rect::from_min_size(position, egui::vec2(0.0, 0.0)); //TODO: Magic nums
+
+        if !viewport_rect.intersects(menu_rect) {
+            // msgs.push(Message::AnnotationClicked(None));
+            return;
+        }
+
+        egui::Area::new(egui::Id::new(("annotation_quick_menu", id)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(position)
+            .show(ui.ctx(), |ui| {
+                Frame::popup(ui.style())
+                    .fill(ui.visuals().extreme_bg_color)
+                    .stroke(Stroke::new(
+                        1.0,
+                        ui.visuals().widgets.noninteractive.bg_stroke.color,
+                    ))
+                    .corner_radius(8.0)
+                    .inner_margin(egui::Margin::same(4))
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
+
+                        ui.horizontal(|ui| {
+                            if ui.button(icons::SEARCH_LINE).clicked() {
+                                msgs.push(Message::GoToAnnotationPosition(
+                                    id,
+                                    waves.last_active_viewport_idx,
+                                ));
+                            }
+
+                            let vis_icon = if !self.is_visible() {
+                                icons::EYE_OFF_LINE
+                            } else {
+                                icons::EYE_LINE
+                            };
+
+                            if ui.button(vis_icon).clicked() {
+                                msgs.push(Message::ToggleAnnotationVisiblility(id));
+                            }
+
+                            if ui.button(icons::DELETE_BIN_LINE).clicked() {
+                                msgs.push(Message::RemoveAnnotation(id));
+                            }
+                        });
+                    });
+            });
+
+        if ui.input(|i| i.pointer.primary_clicked()) && !ui.ctx().is_pointer_over_area() {
+            msgs.push(Message::AnnotationClicked(None));
+        }
+    }
+    fn draw_hover_info(&self, ui: &mut egui::Ui) {
+        ui.label(format!("Type: {}", self.get_type()));
+        ui.label(format!("Name: {}", self.get_name()));
+        ui.label(format!("ID: {:?}", self.get_id()));
+        ui.label(format!(
+            "Group: {}",
+            self.get_group_name()
+                .unwrap_or_else(|| "Ungrouped".to_string())
+        ));
+        ui.label(format!("Visible: {}", self.is_visible()));
     }
 }
 
@@ -190,20 +275,18 @@ impl WaveData {
         viewport_idx: usize,
         ctx: &mut DrawingContext,
         theme: &SurferTheme,
-        y_offset: f32,
         msgs: &mut Vec<Message>,
+        y_offset: f32,
+        viewport_rect: egui::Rect,
     ) {
         for annotation in &self.annotations {
-            match annotation {
-                Annotation::Arrow(arrow) => {
-                    self.draw_arrow(arrow, ui, *viewport, viewport_idx, ctx, theme, msgs);
-                }
-                Annotation::Rect(rect) => {
-                    self.draw_rectangle(rect, ui, viewport, ctx, theme, y_offset, msgs);
-                }
-            }
-            if annotation.open_quick_menu() {
-                annotation.draw_annotation_quick_menu(ui, ctx, msgs, viewport, self);
+            annotation.draw(ui, &self, viewport_idx, ctx, theme, msgs, y_offset);
+
+            if self.selected_annotation == Some(annotation.get_id())
+                && viewport_idx == self.last_active_viewport_idx
+            {
+                annotation.draw_quick_menu(ui, msgs, &self, viewport, ctx, y_offset, viewport_rect);
+                //annotation.is_selected();
             }
         }
     }

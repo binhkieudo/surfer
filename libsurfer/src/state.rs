@@ -345,8 +345,10 @@ impl SystemState {
                             viewports,
                             cursor: None,
                             markers: HashMap::new(),
-
                             annotations: Vec::new(),
+                            selected_annotation: None,
+                            annotation_counter: 0,
+                            last_active_viewport_idx: 0,
                             focused_item: None,
                             focused_transaction: (None, None),
                             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -424,6 +426,9 @@ impl SystemState {
             cursor: None,
             markers: HashMap::new(),
             annotations: Vec::new(),
+            selected_annotation: None,
+            annotation_counter: 1,
+            last_active_viewport_idx: 0,
             focused_item: None,
             focused_transaction: (None, None),
             default_variable_name_type: self.user.config.default_variable_name_type,
@@ -600,6 +605,8 @@ impl SystemState {
             annotations: waves.annotations.clone(),
             annotation_group: waves.available_groups.clone(),
             annotation_list: waves.annotation_list_visible.clone(),
+            selected_annotation: waves.selected_annotation.clone(),
+            annotation_counter: waves.annotation_counter,
         }
     }
 

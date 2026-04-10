@@ -1,5 +1,7 @@
+use crate::annotation::Annotation;
+use crate::annotation::{Annotatable, AnnotationData};
 use crate::config::SurferTheme;
-use crate::displayed_item::DisplayedItemRef;
+use crate::displayed_item::{DisplayedItem, DisplayedItemRef};
 use crate::graphics::Graphic;
 use crate::message::Message;
 use crate::view::GroupDrawingInfo;
@@ -9,6 +11,11 @@ use chrono::{DateTime, Local, offset};
 use egui::{Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 use num::BigInt;
 use serde::{Deserialize, Serialize};
+
+const DEFAULT_TYPE: &str = "Arrow";
+const GAMMA_FACTOR: f32 = 1.1;
+const WIDTH_FACTOR: f32 = 1.3;
+
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum ArrowDisplayMode {
@@ -104,44 +111,203 @@ fn item_center_y(waves: &WaveData, item_ref: &DisplayedItemRef) -> Option<f32> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ArrowAnnotation {
-    pub id: Id,
     pub from: WavePoint,
     pub to: WavePoint,
-    pub color: Color32,
-    pub width: f32,
     pub display_mode: ArrowDisplayMode,
     pub created_at: DateTime<Local>,
     pub y_offset: f32,
     pub head_mode: ArrowHeadMode,
-    pub group_name: Option<String>,
-    pub visible: bool,
-    pub name: String,
-    pub open_quick_menu: bool,
+    pub annotation_data: AnnotationData,
+}
+
+impl Annotatable for ArrowAnnotation {
+    fn get_id(&self) -> Id {
+        self.annotation_data.id
+    }
+    fn get_type(&self) -> &str {
+        "Arrow"
+    }
+    fn set_name(&mut self, name: String) {
+        self.annotation_data.name = name;
+    }
+
+    fn get_name(&self) -> String {
+        self.annotation_data.name.clone()
+    }
+
+    fn set_group_name(&mut self, name: Option<String>) {
+        self.annotation_data.group_name = name;
+    }
+
+    fn get_group_name(&self) -> Option<String> {
+        self.annotation_data.group_name.clone()
+    }
+
+    fn is_selected(&mut self) {
+        self.annotation_data.stroke = WIDTH_FACTOR * 2.0;
+        self.annotation_data.color.gamma_multiply(GAMMA_FACTOR);
+    }
+
+    fn set_visibility(&mut self, visible: bool) {
+        if visible {
+            self.show();
+            self.annotation_data.visible = true;
+        } else {
+            self.hide();
+            self.annotation_data.visible = false;
+        }
+    }
+    fn is_visible(&self) -> bool {
+        self.annotation_data.visible
+    }
+    //fn toggle_visibility(&mut self);
+    fn get_time_at_start(&self) -> BigInt {
+        (&self.from.time + &self.to.time) / 2
+    }
+
+    fn menu_position(
+        &self,
+        waves: &WaveData,
+        viewport: &Viewport,
+        ctx: &mut DrawingContext,
+        y_offset: f32,
+    ) -> Pos2 {
+        self.to.screen_pos
+    }
+
+    fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
+        self.to.attached_item.as_ref() == Some(removed_ref)
+    }
+
+    fn draw(
+        &self,
+        ui: &mut Ui,
+        waves: &WaveData,
+        viewport_idx: usize,
+        ctx: &mut DrawingContext,
+        theme: &SurferTheme,
+        msgs: &mut Vec<Message>,
+        y_offset: f32,
+    ) {
+        let mut arrow_annotation = self.clone();
+
+        arrow_annotation.annotation_data.color = theme.annotation_arrow.color;
+        arrow_annotation.annotation_data.stroke = theme.annotation_arrow.width;
+
+        if waves.selected_annotation == Some(self.annotation_data.id) {
+            arrow_annotation.is_selected();
+        }
+
+        arrow_annotation.annotation_data.id =
+            egui::Id::new(("arrow", self.annotation_data.id, viewport_idx));
+
+        let to_y = match self.to.attached_item.as_ref() {
+            Some(item_ref) => match item_center_y(waves, item_ref) {
+                Some(y) => y,
+                None => return,
+            },
+            None => return,
+        };
+
+        let from_y = match self.head_mode {
+            ArrowHeadMode::End => to_y - self.y_offset, //TODO: Change this to input so we dont have to save as variable.
+            ArrowHeadMode::Double => match self.from.attached_item.as_ref() {
+                Some(item_ref) => match item_center_y(waves, item_ref) {
+                    Some(y) => y,
+                    None => return,
+                },
+                None => return,
+            },
+        };
+
+        let num_timestamps: BigInt = waves.safe_num_timestamps();
+        let viewport = waves.viewports[viewport_idx];
+        let frame_width = ctx.cfg.canvas_size.x;
+
+        let new_to_x =
+            viewport.pixel_from_time(&arrow_annotation.to.time, frame_width, &num_timestamps);
+
+        let new_from_x =
+            viewport.pixel_from_time(&arrow_annotation.from.time, frame_width, &num_timestamps);
+
+        let mut new_to = (ctx.to_screen)(new_to_x, to_y);
+        let mut new_from = (ctx.to_screen)(new_from_x, from_y);
+
+        new_to.y = to_y;
+        new_from.y = from_y;
+
+        if !new_to.x.is_finite()
+            || !new_to.y.is_finite()
+            || !new_from.x.is_finite()
+            || !new_from.y.is_finite()
+        {
+            return;
+        }
+
+        arrow_annotation.to.screen_pos = new_to;
+        arrow_annotation.from.screen_pos = new_from;
+
+        let pointer_hover_pos = ui.input(|i| i.pointer.hover_pos());
+        let pointer_click_pos = ui.input(|i| i.pointer.interact_pos());
+        let primary_clicked = ui.input(|i| i.pointer.primary_clicked());
+
+        let exact_hovered = pointer_hover_pos
+            .and_then(|p| arrow_annotation.hit_distance_screen(p))
+            .is_some();
+
+        let exact_clicked = primary_clicked
+            && pointer_click_pos
+                .and_then(|p| arrow_annotation.hit_distance_screen(p))
+                .is_some();
+
+        //let _response = ui.add(arrow_annotation);
+
+        let _response = ui.add(arrow_annotation);
+
+        if exact_clicked {
+            //waves.selected_annotation = Some(arrow_annotation.annotation_data.id);
+            msgs.push(Message::SetActiveViewport(viewport_idx));
+            msgs.push(Message::AnnotationClicked(Some(self.annotation_data.id)));
+            println!("clicked");
+        }
+
+        if exact_hovered {
+            if let Some(pointer_pos) = pointer_hover_pos {
+                let hover_rect = egui::Rect::from_center_size(pointer_pos, egui::vec2(1.0, 1.0));
+
+                let hover_response = ui.interact(
+                    hover_rect,
+                    egui::Id::new(("arrow_hover_info", self.annotation_data.id, viewport_idx)),
+                    egui::Sense::hover(),
+                );
+
+                hover_response.on_hover_ui(|ui| {
+                    self.draw_hover_info(ui);
+                });
+            }
+        }
+    }
 }
 
 impl ArrowAnnotation {
     pub(crate) fn new(
+        id: Id,
         from: WavePoint,
         to: WavePoint,
-        color: egui::Color32,
-        width: f32,
         head_mode: ArrowHeadMode,
-        group_name: Option<String>,
+        num: i32,
     ) -> Self {
+        let name = format!("{} {}", DEFAULT_TYPE, num);
+        let annotation_data = AnnotationData::new(id, name);
+
         ArrowAnnotation {
-            id: Id::new(format!("arrow_{:?}_{:?}", from.screen_pos, to.screen_pos)),
             from: from.clone(),
             to: to.clone(),
-            color,
-            width,
             display_mode: ArrowDisplayMode::FullArrow,
             created_at: Local::now(),
             y_offset: to.screen_pos.y - from.screen_pos.y,
             head_mode,
-            group_name,
-            visible: true,
-            name: "".to_string(),
-            open_quick_menu: false,
+            annotation_data,
         }
     }
 
@@ -163,31 +329,33 @@ impl ArrowAnnotation {
     pub fn toggle_arrow_visibility(&mut self) {
         if self.display_mode == ArrowDisplayMode::FullArrow {
             self.hide();
-            self.visible = false;
+            self.annotation_data.visible = false;
         } else {
             self.show();
-            self.visible = true;
+            self.annotation_data.visible = true;
         }
     }
 
-    pub fn get_time_at_start(&self) -> BigInt {
-        return (&self.from.time + &self.to.time) / 2;
-    }
-
     fn hit_radius(&self) -> f32 {
-        self.width + 4.0
+        self.annotation_data.stroke + 4.0
     }
 
     fn segments(&self) -> Option<ArrowSegments> {
         //få frame pilens viktiga punkter start slut pilens huvud
-        let end_head = arrow_geometry(self.from.screen_pos, self.to.screen_pos, self.width)?;
+        let end_head = arrow_geometry(
+            self.from.screen_pos,
+            self.to.screen_pos,
+            self.annotation_data.stroke,
+        )?;
         let (end_base, end_left, end_right) = end_head;
 
         let start_head: Option<(Pos2, Pos2, Pos2)> = match self.head_mode {
             ArrowHeadMode::End => None,
-            ArrowHeadMode::Double => {
-                arrow_geometry(self.to.screen_pos, self.from.screen_pos, self.width)
-            }
+            ArrowHeadMode::Double => arrow_geometry(
+                self.to.screen_pos,
+                self.from.screen_pos,
+                self.annotation_data.stroke,
+            ),
         };
 
         let shaft_start = match start_head {
@@ -217,7 +385,7 @@ impl ArrowAnnotation {
     fn coarse_hit_rect(&self) -> Rect {
         match self.display_mode {
             ArrowDisplayMode::Dot => {
-                let radius = (self.width * 2.0).max(4.0);
+                let radius = (self.annotation_data.stroke * 2.0).max(4.0);
                 match self.head_mode {
                     ArrowHeadMode::End => {
                         Rect::from_center_size(self.to.screen_pos, Vec2::splat(radius * 2.0 + 8.0))
@@ -261,7 +429,7 @@ impl ArrowAnnotation {
     pub fn hit_distance_screen(&self, pointer: Pos2) -> Option<f32> {
         match self.display_mode {
             ArrowDisplayMode::Dot => {
-                let radius = (self.width * 2.0).max(4.0) + 4.0;
+                let radius = (self.annotation_data.stroke * 2.0).max(4.0) + 4.0;
                 let mut best = (pointer - self.to.screen_pos).length();
 
                 if let ArrowHeadMode::Double = self.head_mode {
@@ -322,25 +490,29 @@ impl ArrowAnnotation {
 
 impl Widget for ArrowAnnotation {
     fn ui(self, ui: &mut Ui) -> Response {
+        let response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::empty());
         match self.display_mode {
             ArrowDisplayMode::Dot => {
                 // rita först sen kalla på coarse_hit_rect för att lägga till hit boxarna
-                let radius = (self.width * 2.0).max(4.0);
+                let radius = (self.annotation_data.stroke * 2.0).max(4.0);
 
                 ui.painter()
-                    .circle_filled(self.to.screen_pos, radius, self.color);
+                    .circle_filled(self.to.screen_pos, radius, self.annotation_data.color);
 
                 if let ArrowHeadMode::Double = self.head_mode {
-                    ui.painter()
-                        .circle_filled(self.from.screen_pos, radius, self.color);
+                    ui.painter().circle_filled(
+                        self.from.screen_pos,
+                        radius,
+                        self.annotation_data.color,
+                    );
                 }
 
                 let hit_rect = self.coarse_hit_rect();
-                ui.interact(hit_rect, self.id, Sense::click())
+                ui.interact(hit_rect, self.annotation_data.id, Sense::click())
             }
 
             ArrowDisplayMode::FullArrow => {
-                let stroke = Stroke::new(self.width, self.color);
+                let stroke = Stroke::new(self.annotation_data.stroke, self.annotation_data.color);
 
                 if let Some(seg) = self.segments() {
                     // Skaftet
@@ -365,21 +537,25 @@ impl Widget for ArrowAnnotation {
                     }
 
                     let hit_rect = self.coarse_hit_rect();
-                    ui.interact(hit_rect, self.id, Sense::click())
+                    ui.interact(hit_rect, self.annotation_data.id, Sense::click())
                 } else {
                     let rect = Rect::from_center_size(
                         self.from.screen_pos,
                         Vec2::splat(self.hit_radius() * 2.0),
                     );
-                    let response = ui.interact(rect, self.id, Sense::click());
-                    ui.painter()
-                        .circle_filled(self.from.screen_pos, self.width, self.color);
+                    let response = ui.interact(rect, self.annotation_data.id, Sense::click());
+                    ui.painter().circle_filled(
+                        self.from.screen_pos,
+                        self.annotation_data.stroke,
+                        self.annotation_data.color,
+                    );
                     response
                 }
             }
         }
     }
 }
+
 
 impl WaveData {
     pub fn item_ref_at_canvas_y(&self, y: f32) -> Option<DisplayedItemRef> {
@@ -393,94 +569,4 @@ impl WaveData {
     //         arrow.show();
     //     }
     // }
-
-    pub fn draw_arrow(
-        &self,
-        arrow: &ArrowAnnotation,
-        ui: &mut egui::Ui,
-        viewport: Viewport,
-        viewport_idx: usize,
-        ctx: &mut DrawingContext,
-        theme: &SurferTheme,
-        msgs: &mut Vec<Message>,
-    ) {
-        let mut arrow_annotation = arrow.clone();
-        //arrow_annotation.color = theme.annotation_arrow.color;
-        arrow_annotation.id = egui::Id::new(("arrow", arrow.id, viewport_idx));
-        arrow_annotation.color = theme.annotation_arrow.color;
-        arrow_annotation.width = theme.annotation_arrow.width;
-
-        let to_y = match arrow.to.attached_item.as_ref() {
-            Some(item_ref) => match item_center_y(self, item_ref) {
-                Some(y) => y,
-                None => return,
-            },
-            None => return,
-        };
-
-        let from_y = match arrow.head_mode {
-            ArrowHeadMode::End => to_y - arrow.y_offset,
-            ArrowHeadMode::Double => match arrow.from.attached_item.as_ref() {
-                Some(item_ref) => match item_center_y(self, item_ref) {
-                    Some(y) => y,
-                    None => return,
-                },
-                None => return,
-            },
-        };
-
-        let num_timestamps: BigInt = self.safe_num_timestamps();
-        let frame_width = ctx.cfg.canvas_size.x;
-
-        let new_to_x =
-            viewport.pixel_from_time(&arrow_annotation.to.time, frame_width, &num_timestamps);
-
-        let new_from_x =
-            viewport.pixel_from_time(&arrow_annotation.from.time, frame_width, &num_timestamps);
-
-        let mut new_to = (ctx.to_screen)(new_to_x, to_y);
-        let mut new_from = (ctx.to_screen)(new_from_x, from_y);
-
-        new_to.y = to_y;
-        new_from.y = from_y;
-
-        if !new_to.x.is_finite()
-            || !new_to.y.is_finite()
-            || !new_from.x.is_finite()
-            || !new_from.y.is_finite()
-        {
-            return;
-        }
-
-        arrow_annotation.to.screen_pos = new_to;
-        arrow_annotation.from.screen_pos = new_from;
-
-        let pointer_hover_pos = ui.input(|i| i.pointer.hover_pos());
-        let pointer_click_pos = ui.input(|i| i.pointer.interact_pos());
-        let primary_clicked = ui.input(|i| i.pointer.primary_clicked());
-
-        let exact_hovered = pointer_hover_pos
-            .and_then(|p| arrow_annotation.hit_distance_screen(p))
-            .is_some();
-
-        let exact_clicked = primary_clicked
-            && pointer_click_pos
-                .and_then(|p| arrow_annotation.hit_distance_screen(p))
-                .is_some();
-
-        //let _response = ui.add(arrow_annotation);
-
-        if exact_clicked {
-            arrow_annotation.color = Color32::RED;
-            msgs.push(Message::AnnotationClicked(arrow.id));
-            println!("clicked");
-        }
-
-        if exact_hovered {
-            println!("time: {}", arrow.created_at_string());
-            println!("hovered id: {:?},", arrow.id);
-        }
-
-        let _response = ui.add(arrow_annotation);
-    }
 }

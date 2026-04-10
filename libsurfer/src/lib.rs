@@ -70,7 +70,9 @@ pub mod wave_source;
 pub mod wcp;
 pub mod wellen;
 
+use crate::annotation::Annotatable;
 use crate::annotation::Annotation;
+use crate::annotation::AnnotationData;
 use crate::arrow::ArrowAnnotation;
 use crate::arrow::ArrowHeadMode;
 use crate::channels::checked_send;
@@ -96,6 +98,7 @@ use displayed_item::DisplayedVariable;
 use displayed_item_tree::DisplayedItemTree;
 use eframe::{App, CreationContext};
 use egui::Color32;
+use egui::Id;
 use egui::{FontData, FontDefinitions, FontFamily};
 use eyre::{Result, WrapErr as _};
 use ftr_parser::types::Transaction;
@@ -291,6 +294,8 @@ struct CanvasState {
     annotations: Vec<Annotation>,
     annotation_group: Vec<String>,
     annotation_list: bool,
+    selected_annotation: Option<Id>,
+    annotation_counter: i32,
 }
 
 impl SystemState {
@@ -1903,6 +1908,8 @@ impl SystemState {
                         waves.annotations = prev_state.annotations;
                         waves.available_groups = prev_state.annotation_group;
                         waves.annotation_list_visible = prev_state.annotation_list;
+                        waves.selected_annotation = prev_state.selected_annotation;
+                        waves.annotation_counter = prev_state.annotation_counter;
                     } else {
                         break;
                     }
@@ -1923,6 +1930,8 @@ impl SystemState {
                         waves.annotations = prev_state.annotations;
                         waves.available_groups = prev_state.annotation_group;
                         waves.annotation_list_visible = prev_state.annotation_list;
+                        waves.selected_annotation = prev_state.selected_annotation;
+                        waves.annotation_counter = prev_state.annotation_counter;
                     } else {
                         break;
                     }
@@ -2280,36 +2289,25 @@ impl SystemState {
                 }
             }
             Message::RectangleAdded {
-                id: _, // ignore field
                 time_at_start,
                 time_at_end,
                 wave_from,
                 wave_to,
                 rect,
-                color,
-                width,
-                name,
-                group_name,
             } => {
-                let cool_id = egui::Id::new(("rectangle", self.next_id_source));
-                self.save_current_canvas(format!("Add rectangle {:?}", cool_id));
+                let id = self.annotation_id();
+                self.save_current_canvas(format!("Add rectangle {:?}", id));
                 let waves = self.user.waves.as_mut()?;
-
-                waves.annotations.push(Annotation::Rect(RectAnnotation {
-                    id: cool_id,
+                waves.annotation_counter += 1;
+                waves.annotations.push(Annotation::Rect(RectAnnotation::new(
+                    id,
                     time_at_start,
                     time_at_end,
                     wave_from,
                     wave_to,
                     rect,
-                    color,
-                    width,
-                    name,
-                    group_name,
-                    visible: true,
-                    open_quick_menu: false,
-                }));
-                self.next_id_source += 1;
+                    waves.annotation_counter,
+                )));
                 self.add_rectangle = false;
             }
             Message::AddArrow { head_mode } => {
@@ -2329,14 +2327,12 @@ impl SystemState {
             Message::ArrowAdded {
                 wave_point_from,
                 wave_point_to,
-                color,
-                width,
                 head_mode,
-                group_name,
             } => {
-                self.save_current_canvas("Add arrow".to_string());
-
+                let id = self.annotation_id();
+                self.save_current_canvas(format!("Add arrow {:?}", id));
                 let waves = self.user.waves.as_mut()?;
+                waves.annotation_counter += 1;
 
                 match head_mode.clone() {
                     ArrowHeadMode::End => {
@@ -2354,12 +2350,11 @@ impl SystemState {
                 waves
                     .annotations
                     .push(Annotation::Arrow(ArrowAnnotation::new(
+                        id,
                         wave_point_from,
                         wave_point_to,
-                        color,
-                        width,
                         head_mode,
-                        group_name,
+                        waves.annotation_counter,
                     )));
             }
 
@@ -2373,7 +2368,7 @@ impl SystemState {
                 self.save_current_canvas(format!("Changed visibility on {:?}", anno_id));
                 let waves = self.user.waves.as_mut()?;
                 if let Some(target) = waves.annotations.iter_mut().find(|a| a.get_id() == anno_id) {
-                    target.toggle_visibility();
+                    target.set_visibility(!target.is_visible());
                 }
             }
 
@@ -2409,7 +2404,7 @@ impl SystemState {
             }
 
             Message::CreateAnnotationGroup(name) => {
-                self.save_current_canvas(format!("Add annotation group {name}"));
+                self.save_current_canvas(format!("Added annotation group {name}"));
                 let waves = self.user.waves.as_mut()?;
                 waves.available_groups.push(name);
             }
@@ -2417,13 +2412,29 @@ impl SystemState {
             Message::DeleteAnnotationGroup(name) => {
                 self.save_current_canvas(format!("Removed annotation group {name}"));
                 let waves = self.user.waves.as_mut()?;
+                for annotation in waves.annotations.iter_mut() {
+                    if annotation.get_group_name().as_ref() == Some(&name) {
+                        annotation.set_group_name(None);
+                    }
+                }
+                waves.available_groups.retain(|x| x != &name);
+            }
+
+            Message::DeleteAllAnnotationInGroup(name) => {
+                self.save_current_canvas(format!(
+                    "Removed annotation group {name} and all it's annotations"
+                ));
+                let waves = self.user.waves.as_mut()?;
+                waves
+                    .annotations
+                    .retain(|annotation| annotation.get_group_name().as_ref() != Some(&name));
                 waves.available_groups.retain(|x| x != &name);
             }
 
             Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
 
             Message::UpdateAnnotationGroup(anno_id, name) => {
-                self.save_current_canvas(format!("Addded {:?} to {:?}", anno_id, name));
+                self.save_current_canvas(format!("Added {:?} to {:?}", anno_id, name));
                 let waves = self.user.waves.as_mut()?;
                 if let Some(target) = waves.annotations.iter_mut().find(|a| a.get_id() == anno_id) {
                     target.set_group_name(name);
@@ -2442,7 +2453,7 @@ impl SystemState {
                 self.save_current_canvas(format!("Changed group {:?} visibility", group_filter));
                 if let Some(waves) = self.user.waves.as_mut() {
                     for annotation in waves.annotations.iter_mut() {
-                        if annotation.group_name() == group_filter {
+                        if annotation.get_group_name() == group_filter {
                             annotation.set_visibility(visible);
                         }
                     }
@@ -2450,7 +2461,15 @@ impl SystemState {
             }
             Message::AnnotationClicked(id) => {
                 if let Some(waves) = self.user.waves.as_mut() {
-                    Annotation::clicked(id, waves);
+                    waves.select_annotation(id);
+                }
+            }
+
+            Message::SetActiveViewport(idx) => {
+                if let Some(waves) = self.user.waves.as_mut() {
+                    if idx < waves.viewports.len() {
+                        waves.last_active_viewport_idx = idx;
+                    }
                 }
             }
         }
@@ -2458,7 +2477,13 @@ impl SystemState {
         Some(())
     }
 
-    fn add_scope_as_group(
+    fn annotation_id(&mut self) -> Id {
+        let id = egui::Id::new(("annotation", self.next_id_source));
+        self.next_id_source += 1;
+        id
+    }
+
+    pub fn add_scope_as_group(
         &mut self,
         scope: &ScopeRef,
         pos: TargetPosition,

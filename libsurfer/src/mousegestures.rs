@@ -141,10 +141,6 @@ impl SystemState {
             if self.add_rectangle == true {
                 let end_location = self.clamp_y(end_location, waves.get_content_height(y_offset));
                 let temp_rect = emath::Rect::from_two_pos(start_location, end_location);
-                let color = self.user.config.theme.annotation_rectangle.color;
-                let width = self.user.config.theme.annotation_rectangle.width;
-
-                let id = egui::Id::new(self.next_id_source);
 
                 let first_time = waves.viewports[viewport_idx].as_time_bigint(
                     start_location.x,
@@ -187,37 +183,14 @@ impl SystemState {
                 } else {
                     None
                 };
-
-                if first_time < second_time {
-                    msgs.push(Message::RectangleAdded {
-                        id,
-                        time_at_start: first_time,
-                        time_at_end: second_time,
-                        wave_from: wave_from,
-                        wave_to: wave_to,
-                        rect: temp_rect,
-                        color,
-                        width,
-                        name: "".to_string(),
-                        group_name: None,
-                    });
-                } else {
-                    msgs.push(Message::RectangleAdded {
-                        id,
-                        time_at_end: first_time,
-                        time_at_start: second_time,
-                        wave_to: wave_from,
-                        wave_from: wave_to,
-                        rect: temp_rect,
-                        color,
-                        width,
-                        name: "".to_string(),
-                        group_name: None,
-                    });
-                }
+                msgs.push(Message::RectangleAdded {
+                    time_at_start: first_time.clone().min(second_time.clone()),
+                    time_at_end: first_time.max(second_time),
+                    wave_from: wave_from,
+                    wave_to: wave_to,
+                    rect: temp_rect,
+                });
             } else if self.add_arrow == true {
-                let color = self.user.config.theme.annotation_arrow.color;
-                let width = self.user.config.theme.annotation_arrow.width;
                 let start_pos = (ctx.to_screen)(start_location.x, start_location.y);
                 let end_pos = (ctx.to_screen)(end_location.x, end_location.y);
                 println!("end_pos_y: {}", end_pos.y);
@@ -255,8 +228,6 @@ impl SystemState {
                     head_mode = ArrowHeadMode::Double;
                 };
 
-                // let from : GrPoint = ;
-
                 println!("Mode: {:?}", head_mode);
 
                 let wave_point_from = WavePoint {
@@ -275,10 +246,7 @@ impl SystemState {
                     msgs.push(Message::ArrowAdded {
                         wave_point_from,
                         wave_point_to,
-                        color,
-                        width,
                         head_mode,
-                        group_name: None,
                     });
                 };
             } else {
