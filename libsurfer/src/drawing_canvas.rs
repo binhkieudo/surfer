@@ -7,8 +7,7 @@ use ftr_parser::types::{Transaction, TxGenerator};
 use itertools::Itertools;
 use num::bigint::{ToBigInt, ToBigUint};
 use num::{BigInt, BigUint, ToPrimitive, Zero};
-use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
-use std::cmp::Ordering;
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use surfer_translation_types::{
@@ -380,6 +379,12 @@ fn variable_digital_draw_commands(
 }
 
 impl SystemState {
+    fn sorted_drawing_infos(waves: &WaveData) -> Vec<&ItemDrawingInfo> {
+        let mut sorted = waves.drawing_infos.iter().collect::<Vec<_>>();
+        sorted.sort_by(|a, b| a.top().total_cmp(&b.top()));
+        sorted
+    }
+
     pub fn invalidate_draw_commands(&mut self) {
         if let Some(waves) = &self.user.waves {
             for viewport in 0..waves.viewports.len() {
@@ -424,13 +429,13 @@ impl SystemState {
         let num_timestamps = waves.safe_num_timestamps();
         let max_time = num_timestamps.to_f64().unwrap_or(f64::MAX);
         let mut clock_edges = vec![];
+        let viewport = waves.viewports[viewport_idx];
         // Compute which timestamp to draw in each pixel. We'll draw from -extra_draw_width to
         // width + extra_draw_width in order to draw initial transitions outside the screen
-        let mut timestamps = (-cfg.extra_draw_width
-            ..(cfg.canvas_size.x as i32 + cfg.extra_draw_width))
-            .par_bridge()
+        let timestamps = (-cfg.extra_draw_width..(cfg.canvas_size.x as i32 + cfg.extra_draw_width))
+            .into_par_iter()
             .filter_map(|x| {
-                let time = waves.viewports[viewport_idx]
+                let time = viewport
                     .as_absolute_time(f64::from(x), cfg.canvas_size.x, &num_timestamps)
                     .0;
                 if time < 0. || time > max_time {
@@ -440,7 +445,6 @@ impl SystemState {
                 }
             })
             .collect::<Vec<_>>();
-        timestamps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
         let use_dinotrace_style = self.use_dinotrace_style();
         let translators = &self.translators;
@@ -827,15 +831,12 @@ impl SystemState {
             theme: &self.user.config.theme,
         };
 
+        let sorted_drawing_infos = Self::sorted_drawing_infos(waves);
+
         // We draw in absolute coords, but the variable offset in the y
         // direction is also in absolute coordinates, so we need to
         // compensate for that
-        for (item_count, drawing_info) in waves
-            .drawing_infos
-            .iter()
-            .sorted_by_key(|o| o.top() as i32)
-            .enumerate()
-        {
+        for (item_count, drawing_info) in sorted_drawing_infos.iter().copied().enumerate() {
             // Get background color
             let background_color =
                 self.get_background_color(waves, drawing_info.vidx(), item_count);
@@ -848,35 +849,32 @@ impl SystemState {
 
         match &self.draw_data.borrow()[viewport_idx] {
             Some(CachedDrawData::WaveDrawData(draw_data)) => {
-                self.draw_wave_data(waves, draw_data, &mut ctx);
+                self.draw_wave_data(waves, draw_data, &sorted_drawing_infos, &mut ctx);
             }
             Some(CachedDrawData::TransactionDrawData(draw_data)) => {
-                self.draw_transaction_data(waves, draw_data, viewport_idx, ui, msgs, &mut ctx);
+                self.draw_transaction_data(
+                    waves,
+                    draw_data,
+                    viewport_idx,
+                    ui,
+                    msgs,
+                    &sorted_drawing_infos,
+                    &mut ctx,
+                );
             }
             None => {}
         }
         #[cfg(feature = "performance_plot")]
         self.timing.borrow_mut().end("Wave drawing");
 
-        waves.draw_graphics(
-            &mut ctx,
-            &waves.viewports[viewport_idx],
-            &self.user.config.theme,
-        );
+        let viewport = &waves.viewports[viewport_idx];
+        waves.draw_graphics(&mut ctx, viewport, &self.user.config.theme);
 
-        waves.draw_cursor(
-            &self.user.config.theme,
-            &mut ctx,
-            &waves.viewports[viewport_idx],
-        );
+        waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
 
-        waves.draw_markers(
-            &self.user.config.theme,
-            &mut ctx,
-            &waves.viewports[viewport_idx],
-        );
+        waves.draw_markers(&self.user.config.theme, &mut ctx, viewport);
 
-        self.draw_marker_boxes(waves, &mut ctx, &waves.viewports[viewport_idx], y_zero);
+        self.draw_marker_boxes(waves, &mut ctx, viewport, y_zero);
 
         if self.show_default_timeline() {
             let rect = Rect {
@@ -920,6 +918,7 @@ impl SystemState {
         &self,
         waves: &WaveData,
         draw_data: &CachedWaveDrawData,
+        sorted_drawing_infos: &[&ItemDrawingInfo],
         ctx: &mut DrawingContext,
     ) {
         let clock_edges = &draw_data.clock_edges;
@@ -949,12 +948,7 @@ impl SystemState {
             );
         }
         let zero_y = (ctx.to_screen)(0., 0.).y;
-        for (item_count, drawing_info) in waves
-            .drawing_infos
-            .iter()
-            .sorted_by_key(|o| o.top() as i32)
-            .enumerate()
-        {
+        for (item_count, drawing_info) in sorted_drawing_infos.iter().copied().enumerate() {
             // We draw in absolute coords, but the variable offset in the y
             // direction is also in absolute coordinates, so we need to
             // compensate for that
@@ -1135,6 +1129,7 @@ impl SystemState {
         viewport_idx: usize,
         ui: &mut Ui,
         msgs: &mut Vec<Message>,
+        sorted_drawing_infos: &[&ItemDrawingInfo],
         ctx: &mut DrawingContext,
     ) {
         let draw_commands = &draw_data.draw_commands;
@@ -1163,12 +1158,7 @@ impl SystemState {
         );
 
         let zero_y = (ctx.to_screen)(0., 0.).y;
-        for (item_count, drawing_info) in waves
-            .drawing_infos
-            .iter()
-            .sorted_by_key(|o| o.top() as i32)
-            .enumerate()
-        {
+        for (item_count, drawing_info) in sorted_drawing_infos.iter().copied().enumerate() {
             let y_offset = drawing_info.top() - zero_y;
 
             let displayed_item = waves
