@@ -584,8 +584,7 @@ impl SystemState {
                         &first_visible_timestamp,
                         ftr_parser::types::Transaction::get_end_time,
                     ) {
-                        Ok(i) => i,
-                        Err(i) => i,
+                        Ok(i) | Err(i) => i,
                     }
                     .saturating_sub(1);
                 let transactions = generator

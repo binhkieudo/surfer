@@ -8,7 +8,9 @@ use crate::transaction_container::StreamScopeRef;
 use crate::transactions::{draw_transaction_root, draw_transaction_variable_list};
 use crate::variable_direction::get_direction_string;
 use crate::view::draw_true_name;
-use crate::wave_container::{ScopeRef, ScopeRefExt, VariableRef, VariableRefExt, WaveContainer};
+use crate::wave_container::{
+    ScopeRef, ScopeRefExt, VariableMeta, VariableRef, VariableRefExt, WaveContainer,
+};
 use crate::wave_data::{ScopeType, WaveData};
 use derive_more::{Display, FromStr};
 use ecolor::Color32;
@@ -26,6 +28,8 @@ use itertools::Itertools;
 use num::BigUint;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
+use std::rc::Rc;
+use surfer_translation_types::translator::VariableNameInfo;
 use tracing::warn;
 #[derive(Clone, Copy, Debug, Deserialize, Display, FromStr, PartialEq, Eq, Serialize, Sequence)]
 pub enum HierarchyStyle {
@@ -47,6 +51,32 @@ pub enum ScopeExpandType {
     ExpandSpecific(ScopeRef),
     ExpandAll,
     CollapseAll,
+}
+
+use crate::variable_filter::VariableNameFilterType;
+use crate::wave_source::WaveSource;
+
+#[derive(Clone)]
+pub(crate) struct VariableListRow {
+    pub(crate) variable: VariableRef,
+    pub(crate) meta: Option<VariableMeta>,
+    pub(crate) name_info: Option<VariableNameInfo>,
+}
+
+/// Cache key for `draw_all_variables`. The cache is rebuilt whenever any field changes.
+#[derive(PartialEq)]
+pub(crate) struct AllVariableCacheKey {
+    cache_generation: u64,
+    translator_generation: u64,
+    wave_source: WaveSource,
+    filter_str: String,
+    filter_type: VariableNameFilterType,
+    case_insensitive: bool,
+    include_inputs: bool,
+    include_outputs: bool,
+    include_inouts: bool,
+    include_others: bool,
+    group_by_direction: bool,
 }
 
 impl SystemState {
@@ -163,8 +193,11 @@ impl SystemState {
                     let Some(wave_container) = waves.inner.as_waves() else {
                         return;
                     };
-                    let variables =
-                        self.filtered_variables(&wave_container.variables_in_scope(scope), false);
+                    let variables = self.filtered_variables_unsorted(
+                        &wave_container.variables_in_scope(scope),
+                        false,
+                    );
+                    let variable_rows = self.build_variable_rows(wave_container, &variables);
                     // Draw header before scroll area
                     self.draw_variable_list_header(ui);
                     // Parameters shown in variable list
@@ -177,11 +210,11 @@ impl SystemState {
                                 .show(ui, |ui| {
                                     ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
                                     self.draw_parameters(msgs, wave_container, &parameters, ui);
-                                    self.draw_variable_list(
+                                    self.draw_variable_rows(
                                         msgs,
                                         wave_container,
                                         ui,
-                                        &variables,
+                                        &variable_rows,
                                         None,
                                         false,
                                     );
@@ -196,14 +229,14 @@ impl SystemState {
                     ScrollArea::both()
                         .auto_shrink([false; 2])
                         .id_salt("variables")
-                        .show_rows(ui, row_height, variables.len(), |ui, row_range| {
+                        .show_rows(ui, row_height, variable_rows.len(), |ui, row_range| {
                             ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
 
-                            self.draw_variable_list(
+                            self.draw_variable_rows(
                                 msgs,
                                 wave_container,
                                 ui,
-                                &variables,
+                                &variable_rows,
                                 Some(&row_range),
                                 false,
                             );
@@ -299,11 +332,54 @@ impl SystemState {
         );
     }
 
+    fn make_all_variable_cache_key(
+        &self,
+        cache_generation: u64,
+        wave_source: &WaveSource,
+    ) -> AllVariableCacheKey {
+        let f = &self.user.variable_filter;
+        AllVariableCacheKey {
+            cache_generation,
+            translator_generation: self.translator_generation,
+            wave_source: wave_source.clone(),
+            filter_str: f.name_filter_str.clone(),
+            filter_type: f.name_filter_type.clone(),
+            case_insensitive: f.name_filter_case_insensitive,
+            include_inputs: f.include_inputs,
+            include_outputs: f.include_outputs,
+            include_inouts: f.include_inouts,
+            include_others: f.include_others,
+            group_by_direction: f.group_by_direction,
+        }
+    }
+
     fn draw_all_variables(&mut self, msgs: &mut Vec<Message>, ui: &mut Ui) {
+        // Phase 1: Rebuild the row cache only when the key changes.
+        // wave_container borrows self.user.waves; all_variable_rows_cache is a disjoint field.
+        if let Some(waves) = &self.user.waves
+            && let DataContainer::Waves(wave_container) = &waves.inner
+        {
+            let key = self.make_all_variable_cache_key(waves.cache_generation, &waves.source);
+            let is_stale = self
+                .all_variable_rows_cache
+                .as_ref()
+                .is_none_or(|(k, _)| k != &key);
+            if is_stale {
+                let variables = self.filtered_variables_unsorted(&wave_container.variables(), true);
+                let rows = self.build_variable_rows(wave_container, &variables);
+                self.all_variable_rows_cache = Some((key, Rc::new(rows)));
+            }
+        }
+
+        // Phase 2: Draw using the cached rows.
         if let Some(waves) = &self.user.waves {
             match &waves.inner {
                 DataContainer::Waves(wave_container) => {
-                    let variables = self.filtered_variables(&wave_container.variables(), true);
+                    // Clone the Rc (O(1)) to get an owned handle usable inside the closure.
+                    let variable_rows = self
+                        .all_variable_rows_cache
+                        .as_ref()
+                        .map_or_else(|| Rc::new(Vec::new()), |(_, rows)| Rc::clone(rows));
                     let row_height = ui
                         .text_style_height(&TextStyle::Monospace)
                         .max(ui.text_style_height(&TextStyle::Body));
@@ -312,13 +388,13 @@ impl SystemState {
                     ScrollArea::both()
                         .auto_shrink([false; 2])
                         .id_salt("variables")
-                        .show_rows(ui, row_height, variables.len(), |ui, row_range| {
+                        .show_rows(ui, row_height, variable_rows.len(), |ui, row_range| {
                             ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
-                            self.draw_variable_list(
+                            self.draw_variable_rows(
                                 msgs,
                                 wave_container,
                                 ui,
-                                &variables,
+                                &variable_rows,
                                 Some(&row_range),
                                 true,
                             );
@@ -611,7 +687,7 @@ impl SystemState {
         variables: &[VariableRef],
         row_range: Option<&Range<usize>>,
     ) {
-        let filtered_variables = self.filtered_variables(variables, false);
+        let filtered_variables = self.filtered_variables_unsorted(variables, false);
         self.draw_variable_list(
             msgs,
             wave_container,
@@ -631,26 +707,69 @@ impl SystemState {
         row_range: Option<&Range<usize>>,
         display_full_path: bool,
     ) {
-        // Get iterator with more info about each variable
-        let variable_infos = variables
+        let variable_rows = self.build_variable_rows(wave_container, variables);
+        self.draw_variable_rows(
+            msgs,
+            wave_container,
+            ui,
+            &variable_rows,
+            row_range,
+            display_full_path,
+        );
+    }
+
+    fn build_variable_rows(
+        &self,
+        wave_container: &WaveContainer,
+        variables: &[VariableRef],
+    ) -> Vec<VariableListRow> {
+        let mut rows = variables
             .iter()
             .map(|var| {
                 let meta = wave_container.variable_meta(var).ok();
                 let name_info = self.get_variable_name_info(var, meta.as_ref());
-                (var, meta, name_info)
+                VariableListRow {
+                    variable: var.clone(),
+                    meta,
+                    name_info,
+                }
             })
-            .sorted_by_key(|(_, _, name_info)| {
-                -name_info
-                    .as_ref()
-                    .and_then(|info| info.priority)
-                    .unwrap_or_default()
-            })
-            .skip(row_range.as_ref().map_or(0, |r| r.start))
-            .take(
-                row_range
-                    .as_ref()
-                    .map_or(variables.len(), |r| r.end - r.start),
-            );
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|a, b| {
+            let a_priority = a
+                .name_info
+                .as_ref()
+                .and_then(|info| info.priority)
+                .unwrap_or_default();
+            let b_priority = b
+                .name_info
+                .as_ref()
+                .and_then(|info| info.priority)
+                .unwrap_or_default();
+            b_priority
+                .cmp(&a_priority)
+                .then_with(|| self.variable_cmp(&a.variable, &b.variable, Some(wave_container)))
+        });
+        rows
+    }
+
+    fn draw_variable_rows(
+        &self,
+        msgs: &mut Vec<Message>,
+        wave_container: &WaveContainer,
+        ui: &mut Ui,
+        variable_rows: &[VariableListRow],
+        row_range: Option<&Range<usize>>,
+        display_full_path: bool,
+    ) {
+        let variable_rows = if let Some(range) = row_range {
+            let start = range.start.min(variable_rows.len());
+            let end = range.end.min(variable_rows.len());
+            &variable_rows[start..end]
+        } else {
+            variable_rows
+        };
 
         // Precompute common font metrics once per frame to avoid expensive per-row work.
         // NOTE: Safe unwrap, we know that egui has its own built-in font.
@@ -677,10 +796,13 @@ impl SystemState {
         let available_space = ui.available_width() - ui.spacing().button_padding.x * 2.;
 
         // Draw variables
-        for (variable, meta, name_info) in variable_infos {
+        for row in variable_rows {
+            let variable = &row.variable;
+            let meta = row.meta.as_ref();
+            let name_info = row.name_info.clone();
+
             // Get index string
             let index = meta
-                .as_ref()
                 .and_then(|meta| meta.index)
                 .map(|index| {
                     if self.show_variable_indices() {
@@ -693,12 +815,7 @@ impl SystemState {
 
             // Get type icon with color
             let (type_icon, icon_color) = if self.show_hierarchy_icons() {
-                let (icon, color) = self
-                    .user
-                    .config
-                    .theme
-                    .variable_icons
-                    .get_icon(meta.as_ref());
+                let (icon, color) = self.user.config.theme.variable_icons.get_icon(meta);
                 (format!("{icon} "), color)
             } else {
                 (String::new(), self.user.config.theme.foreground)
@@ -707,14 +824,11 @@ impl SystemState {
             // Get direction icon
             let direction = self
                 .show_variable_direction()
-                .then(|| get_direction_string(meta.as_ref(), name_info.as_ref()))
+                .then(|| get_direction_string(meta, name_info.as_ref()))
                 .flatten()
                 .unwrap_or_default();
             // Get value in case of parameter
-            let value = if meta
-                .as_ref()
-                .is_some_and(surfer_translation_types::VariableMeta::is_parameter)
-            {
+            let value = if meta.is_some_and(surfer_translation_types::VariableMeta::is_parameter) {
                 let res = wave_container.query_variable(variable, &BigUint::ZERO).ok();
                 res.and_then(|o| o.and_then(|q| q.current.map(|v| format!(": {}", v.1))))
                     .unwrap_or_else(|| ": Undefined".to_string())
@@ -789,12 +903,12 @@ impl SystemState {
                     if self.show_tooltip() {
                         // Reuse the already-obtained `meta` and pass a clone of the variable
                         // reference into the closure so we don't call `variable_meta` again.
-                        let tooltip_meta = meta.clone();
+                        let tooltip_meta = meta;
                         let tooltip_var = variable.clone();
                         response = response.on_hover_ui(move |ui| {
                             ui.set_max_width(ui.spacing().tooltip_width);
                             ui.add(egui::Label::new(variable_tooltip_text(
-                                tooltip_meta.as_ref(),
+                                tooltip_meta,
                                 &tooltip_var,
                             )));
                         });

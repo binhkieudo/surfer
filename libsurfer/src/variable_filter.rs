@@ -21,7 +21,7 @@ use surfer_translation_types::VariableDirection;
 
 use std::cmp::Ordering;
 
-#[derive(Debug, Display, PartialEq, Serialize, Deserialize, Sequence)]
+#[derive(Clone, Debug, Display, PartialEq, Serialize, Deserialize, Sequence)]
 pub enum VariableNameFilterType {
     #[display("Fuzzy")]
     Fuzzy,
@@ -485,7 +485,7 @@ impl SystemState {
         });
     }
 
-    fn variable_cmp(
+    pub fn variable_cmp(
         &self,
         a: &VariableRef,
         b: &VariableRef,
@@ -525,6 +525,24 @@ impl SystemState {
             .sorted_by(|a, b| self.variable_cmp(a, b, wave_container))
             .cloned()
             .collect_vec()
+    }
+
+    /// Like `filtered_variables` but skips sorting — use when the caller will sort the result
+    /// itself (e.g. `build_variable_rows`).
+    pub(crate) fn filtered_variables_unsorted(
+        &self,
+        variables: &[VariableRef],
+        full_path: bool,
+    ) -> Vec<VariableRef> {
+        let wave_container = match &self.user.waves {
+            Some(wd) => wd.inner.as_waves(),
+            None => None,
+        };
+
+        self.user
+            .variable_filter
+            .matching_variables(variables, wave_container, full_path)
+            .to_vec()
     }
 }
 
