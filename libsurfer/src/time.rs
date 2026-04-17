@@ -808,7 +808,7 @@ impl WaveData {
         } = (ctx.to_screen)(x, 0.);
         ctx.painter.vline(
             x_pos,
-            (y_start)..=(y_start + ctx.cfg.canvas_height),
+            (y_start)..=(y_start + ctx.cfg.canvas_size.y),
             *stroke,
         );
     }
@@ -910,7 +910,7 @@ impl SystemState {
         get_ticks_internal(
             viewport,
             &waves.inner.metadata().timescale,
-            cfg.canvas_width,
+            cfg.canvas_size.x,
             cfg.text_size,
             &self.user.wanted_timeunit,
             &self.get_time_format(),

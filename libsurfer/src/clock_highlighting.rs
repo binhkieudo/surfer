@@ -36,7 +36,7 @@ pub(crate) fn draw_clock_edge_marks(
                     y: y_start,
                 } = (ctx.to_screen)(*x, 0.);
                 ctx.painter
-                    .vline(x_pos, (y_start)..=(y_start + ctx.cfg.canvas_height), stroke);
+                    .vline(x_pos, (y_start)..=(y_start + ctx.cfg.canvas_size.y), stroke);
             }
         }
         ClockHighlightType::Cycle => {
@@ -54,7 +54,7 @@ pub(crate) fn draw_clock_edge_marks(
                             min: (ctx.to_screen)(*x_start, 0.),
                             max: Pos2 {
                                 x: x_end_screen,
-                                y: ctx.cfg.canvas_height + y_start,
+                                y: ctx.cfg.canvas_size.y + y_start,
                             },
                         },
                         CornerRadius::ZERO,

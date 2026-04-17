@@ -133,6 +133,7 @@ pub struct SurferConfig {
     pub default_variable_name_type: VariableNameType,
     default_clock_highlight_type: ClockHighlightType,
     /// Distance in pixels for cursor snap
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub snap_distance: f32,
     /// Maximum size of the undo stack
     pub undo_stack_size: usize,
@@ -145,6 +146,7 @@ pub struct SurferConfig {
     /// HTTP Server Configuration
     pub server: SurverConfig,
     /// Animation time for UI elements in seconds
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub animation_time: f32,
     /// UI animation enabled
     pub animation_enabled: bool,
@@ -224,16 +226,25 @@ pub struct SurferLayout {
     /// Set style of hierarchy
     hierarchy_style: HierarchyStyle,
     /// Text size in points for values in waves
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub waveforms_text_size: f32,
     /// Line height in points for waves
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub waveforms_line_height: f32,
+    /// Pixel gap between consecutive waveform traces
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
+    pub waveforms_gap: f32,
     /// Line height multiples for higher variables
+    #[serde(deserialize_with = "deserialize_non_negative_f32_vec")]
     pub waveforms_line_height_multiples: Vec<f32>,
     /// Line height in points for transaction streams
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub transactions_line_height: f32,
     /// UI zoom factors
+    #[serde(deserialize_with = "deserialize_non_negative_f32_vec")]
     pub zoom_factors: Vec<f32>,
     /// Default UI zoom factor
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     default_zoom_factor: f32,
     /// Highlight the waveform of the focused item?
     highlight_focused: bool,
@@ -365,12 +376,16 @@ impl SurferBehavior {
 /// Mouse gesture configurations. Color and linewidth are configured in the theme using [`SurferTheme::gesture`].
 pub struct SurferGesture {
     /// Size of the overlay help
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub size: f32,
     /// (Squared) minimum distance to move to remove the overlay help and perform gesture
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub deadzone: f32,
     /// Circle radius for background as a factor of size/2
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub background_radius: f32,
     /// Gamma factor for background circle, between 0 (opaque) and 1 (transparent)
+    #[serde(deserialize_with = "deserialize_unit_interval_f32")]
     pub background_gamma: f32,
     /// Mapping between the eight directions and actions
     pub mapping: GestureZones,
@@ -380,6 +395,7 @@ pub struct SurferGesture {
 pub struct SurferLineStyle {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub color: Color32,
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub width: f32,
 }
 
@@ -411,6 +427,7 @@ impl From<&SurferLineStyle> for PathStroke {
 /// Tick mark configuration
 pub struct SurferTicks {
     /// 0 to 1, where 1 means as many ticks that can fit without overlap
+    #[serde(deserialize_with = "deserialize_unit_interval_f32")]
     pub density: f32,
     /// Line style to use for ticks
     pub style: SurferLineStyle,
@@ -422,9 +439,11 @@ pub struct SurferRelationArrow {
     pub style: SurferLineStyle,
 
     /// Arrowhead angle in degrees
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub head_angle: f32,
 
     /// Arrowhead length
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub head_length: f32,
 }
 
@@ -498,8 +517,10 @@ pub struct SurferTheme {
 
     /// Opacity with which variable backgrounds are drawn. 0 is fully transparent and 1 is fully
     /// opaque.
+    #[serde(deserialize_with = "deserialize_unit_interval_f32")]
     pub waveform_opacity: f32,
     /// Opacity of variable backgrounds for wide signals (signals with more than one bit)
+    #[serde(deserialize_with = "deserialize_unit_interval_f32")]
     pub wide_opacity: f32,
 
     #[serde(deserialize_with = "deserialize_color_map")]
@@ -508,12 +529,15 @@ pub struct SurferTheme {
     pub highlight_background: Color32,
 
     /// Variable line width
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub linewidth: f32,
 
     /// Variable line width for accented variables
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub thick_linewidth: f32,
 
     /// Vector transition max width
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub vector_transition_width: f32,
 
     /// Number of lines using standard background before changing to
@@ -526,7 +550,9 @@ pub struct SurferTheme {
     // Drag hint and threshold parameters
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub drag_hint_color: Color32,
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub drag_hint_width: f32,
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub drag_threshold: f32,
 
     /// Tick information
@@ -1144,6 +1170,30 @@ where
 {
     let buf = String::deserialize(deserializer)?;
     SurferTheme::new(Some(buf)).map_err(de::Error::custom)
+}
+
+fn deserialize_non_negative_f32<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = f32::deserialize(deserializer)?;
+    Ok(value.max(0.0))
+}
+
+fn deserialize_non_negative_f32_vec<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values = Vec::<f32>::deserialize(deserializer)?;
+    Ok(values.into_iter().map(|v| v.max(0.0)).collect())
+}
+
+fn deserialize_unit_interval_f32<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = f32::deserialize(deserializer)?;
+    Ok(value.clamp(0.0, 1.0))
 }
 
 /// Searches for `.surfer` directories upward from the current location until it reaches root.

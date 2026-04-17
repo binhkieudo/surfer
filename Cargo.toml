@@ -48,7 +48,7 @@ eframe = { version = "0.34.1", default-features = false, features = [
     "x11",
 ] }
 egui = { version = "0.34.1", default-features = false, features = ["serde"] }
-egui-remixicon = { version = "0.33.1", default-features = false }
+egui-remixicon = { version = "0.34.0", default-features = false }
 egui_extras = { version = "0.34.1", default-features = false }
 egui_plot = "0.35"
 emath = "0.34.1"
@@ -108,10 +108,10 @@ toml = { version = "1.1", default-features = false, features = ["parse"] }
 tracing = "0.1.43"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 vergen-gitcl = "9.1"
-wasm-bindgen = "0.2.117"
-wasm-bindgen-futures = "0.4.67"
+wasm-bindgen = "0.2.118"
+wasm-bindgen-futures = "0.4.68"
 wasm-tracing = "2.1"
-web-sys = { version = "= 0.3.94", features = ["Location", "UrlSearchParams"] }
+web-sys = { version = "= 0.3.95", features = ["Location", "UrlSearchParams"] }
 web-time = "1.1.0"
 wellen = { version = "0.20.4", features = ["serde1"] }
 whoami = "2"

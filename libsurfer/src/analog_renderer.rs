@@ -189,17 +189,16 @@ fn draw_building_indicator(offset: f32, height_scaling_factor: f32, ctx: &mut Dr
     let dot_index = (elapsed / 0.333) as usize % 3;
     let text = ["Building.  ", "Building.. ", "Building..."][dot_index];
 
-    let text_size = ctx.cfg.text_size;
     let row_height = ctx.cfg.line_height * height_scaling_factor;
     let center_y = offset + row_height / 2.0;
-    let center_x = ctx.cfg.canvas_width / 2.0;
+    let center_x = ctx.cfg.canvas_size.x / 2.0;
     let pos = (ctx.to_screen)(center_x, center_y);
 
     ctx.painter.text(
         pos,
         Align2::CENTER_CENTER,
         text,
-        egui::FontId::monospace(text_size),
+        egui::FontId::monospace(ctx.cfg.text_size),
         ctx.theme.foreground.gamma_multiply(0.6),
     );
 }
@@ -868,8 +867,6 @@ fn draw_amplitude_labels(render_ctx: &RenderContext, ctx: &mut DrawingContext) {
     const SPLIT_LABEL_HEIGHT_THRESHOLD: f32 = 2.0;
     const BACKGROUND_ALPHA: u8 = 200;
 
-    let text_size = ctx.cfg.text_size;
-
     let canvas_bg = ctx.theme.canvas_colors.background;
     let text_color = ctx.theme.canvas_colors.foreground;
     let bg_color = Color32::from_rgba_unmultiplied(
@@ -878,7 +875,7 @@ fn draw_amplitude_labels(render_ctx: &RenderContext, ctx: &mut DrawingContext) {
         canvas_bg.b(),
         BACKGROUND_ALPHA,
     );
-    let font = egui::FontId::monospace(text_size);
+    let font = egui::FontId::monospace(ctx.cfg.text_size);
 
     if render_ctx.height_scale < SPLIT_LABEL_HEIGHT_THRESHOLD {
         let combined_text = format!(
@@ -890,7 +887,7 @@ fn draw_amplitude_labels(render_ctx: &RenderContext, ctx: &mut DrawingContext) {
             .painter
             .layout_no_wrap(combined_text.clone(), font.clone(), text_color);
 
-        let label_x = ctx.cfg.canvas_width - galley.size().x - 5.0;
+        let label_x = ctx.cfg.canvas_size.x - galley.size().x - 5.0;
         let label_pos = render_ctx.to_screen(
             label_x,
             f64::midpoint(render_ctx.min_val, render_ctx.max_val),
@@ -921,7 +918,7 @@ fn draw_amplitude_labels(render_ctx: &RenderContext, ctx: &mut DrawingContext) {
             .painter
             .layout_no_wrap(min_text.clone(), font.clone(), text_color);
 
-        let label_x = ctx.cfg.canvas_width - max_galley.size().x.max(min_galley.size().x) - 5.0;
+        let label_x = ctx.cfg.canvas_size.x - max_galley.size().x.max(min_galley.size().x) - 5.0;
 
         let max_pos = render_ctx.to_screen(label_x, render_ctx.max_val, ctx);
         let max_rect = Rect::from_min_size(

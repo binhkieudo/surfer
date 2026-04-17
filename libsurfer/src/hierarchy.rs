@@ -764,6 +764,7 @@ impl SystemState {
                             self.user.config.theme.foreground,
                             char_width_mono,
                             space_for_name,
+                            self.user.config.layout.waveforms_line_height,
                         );
 
                         label.append(&index, 0.0, text_format.clone());

@@ -99,14 +99,14 @@ impl WaveData {
                 } => {
                     let from_x = viewport.pixel_from_time(
                         &from_point.x,
-                        ctx.cfg.canvas_width,
+                        ctx.cfg.canvas_size.x,
                         &num_timestamps,
                     );
                     let from_y = self.get_item_y(&from_point.y);
 
                     let to_x = viewport.pixel_from_time(
                         &to_point.x,
-                        ctx.cfg.canvas_width,
+                        ctx.cfg.canvas_size.x,
                         &num_timestamps,
                     );
                     let to_y = self.get_item_y(&to_point.y);
@@ -146,7 +146,7 @@ impl WaveData {
                     text,
                 } => {
                     let to_x =
-                        viewport.pixel_from_time(&pos.x, ctx.cfg.canvas_width, &num_timestamps);
+                        viewport.pixel_from_time(&pos.x, ctx.cfg.canvas_size.x, &num_timestamps);
                     let to_y = self.get_item_y(&pos.y);
                     if let Some(to_y) = to_y {
                         ctx.painter.text(

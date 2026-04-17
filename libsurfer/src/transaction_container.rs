@@ -150,12 +150,11 @@ impl TransactionContainer {
 
     #[must_use]
     pub fn metadata(&self) -> MetaData {
-        let timescale = self.inner.time_scale;
         MetaData {
             date: None,
             version: None,
             timescale: TimeScale {
-                unit: TimeUnit::from(timescale),
+                unit: TimeUnit::from(self.inner.time_scale),
                 multiplier: None,
             },
         }

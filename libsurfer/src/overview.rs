@@ -26,11 +26,8 @@ impl SystemState {
     fn draw_overview(&self, ui: &mut Ui, waves: &WaveData, msgs: &mut Vec<Message>) {
         let (response, mut painter) = ui.allocate_painter(ui.available_size(), Sense::drag());
         let frame_size = response.rect.size();
-        let frame_width = frame_size.x;
-        let frame_height = frame_size.y;
         let cfg = DrawConfig::new(
-            frame_height,
-            frame_width,
+            frame_size,
             self.user.config.layout.waveforms_line_height,
             self.user.config.layout.waveforms_text_size,
         );
@@ -79,7 +76,7 @@ impl SystemState {
                 self.user.config.theme.foreground,
                 &ticks,
                 &ctx,
-                frame_height * 0.5,
+                frame_size.y * 0.5,
                 Align2::CENTER_CENTER,
             );
         }
@@ -93,7 +90,7 @@ impl SystemState {
             let pointer_pos_global = ui.input(|i| i.pointer.interact_pos());
             let pos = pointer_pos_global.map(|p| to_screen.inverse().transform_pos(p));
             if let Some(pos) = pos {
-                let timestamp = viewport_all.as_time_bigint(pos.x, frame_width, &num_timestamps);
+                let timestamp = viewport_all.as_time_bigint(pos.x, frame_size.x, &num_timestamps);
                 msgs.push(Message::GoToTime(Some(timestamp), 0));
             }
         });
@@ -108,15 +105,15 @@ fn get_viewport_rect(
 ) -> Rect {
     let minx = viewport_all.pixel_from_absolute_time(
         viewport.curr_left.absolute(num_timestamps),
-        ctx.cfg.canvas_width,
+        ctx.cfg.canvas_size.x,
         num_timestamps,
     );
     let maxx = viewport_all.pixel_from_absolute_time(
         viewport.curr_right.absolute(num_timestamps),
-        ctx.cfg.canvas_width,
+        ctx.cfg.canvas_size.x,
         num_timestamps,
     );
     let min = (ctx.to_screen)(minx, 0.);
-    let max = (ctx.to_screen)(maxx, ctx.cfg.canvas_height);
+    let max = (ctx.to_screen)(maxx, ctx.cfg.canvas_size.y);
     Rect { min, max }
 }
