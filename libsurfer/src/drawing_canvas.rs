@@ -346,10 +346,8 @@ fn variable_digital_draw_commands(
 
                 if entry.drawing_type == DigitalDrawingType::Clock {
                     match value.as_ref().map(|result| result.value.as_str()) {
-                        Some("1") => {
-                            if !is_last_timestep && !is_first_timestep {
-                                clock_edges.push(*pixel);
-                            }
+                        Some("1") if !is_last_timestep && !is_first_timestep => {
+                            clock_edges.push(*pixel);
                         }
                         Some(_) => {}
                         None => {}

@@ -519,8 +519,7 @@ impl TranslatorList {
     pub fn is_valid_translator(&self, meta: &VariableMeta, candidate: &str) -> bool {
         self.get_translator(candidate)
             .translates(meta)
-            .map(|preference| preference != TranslationPreference::No)
-            .unwrap_or(false)
+            .is_ok_and(|preference| preference != TranslationPreference::No)
     }
 
     #[cfg(feature = "python")]

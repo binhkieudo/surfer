@@ -57,10 +57,8 @@ impl SystemState {
                         msgs.push(Message::SetTimeEditFocused(false));
                         msgs.push(Message::SetFilterFocused(false));
                     }
-                    (Key::G, true, true, false) => {
-                        if modifiers.command {
-                            msgs.push(Message::HideCommandPrompt);
-                        }
+                    (Key::G, true, true, false) if modifiers.command => {
+                        msgs.push(Message::HideCommandPrompt);
                     }
                     (Key::H, true, false, false) => msgs.push(Message::MoveCursorToTransition {
                         next: false,
@@ -100,15 +98,11 @@ impl SystemState {
                         variable: None,
                         skip_zero: modifiers.shift,
                     }),
-                    (Key::N, true, true, false) => {
-                        if modifiers.command {
-                            msgs.push(Message::SelectNextCommand);
-                        }
+                    (Key::N, true, true, false) if modifiers.command => {
+                        msgs.push(Message::SelectNextCommand);
                     }
-                    (Key::P, true, true, false) => {
-                        if modifiers.command {
-                            msgs.push(Message::SelectPrevCommand);
-                        }
+                    (Key::P, true, true, false) if modifiers.command => {
+                        msgs.push(Message::SelectPrevCommand);
                     }
                     (Key::F11, true, false, _) => msgs.push(Message::ToggleFullscreen),
                     (Key::ArrowRight, true, false, false) => {

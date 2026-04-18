@@ -1677,8 +1677,7 @@ impl SystemState {
                     self.command_prompt
                         .new_selection
                         .unwrap_or(self.command_prompt.selected)
-                        .saturating_sub(1)
-                        .max(0),
+                        .saturating_sub(1),
                 );
             }
             Message::SelectNextCommand => {

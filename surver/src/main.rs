@@ -58,7 +58,7 @@ fn load_file_list(filename: &str) -> Result<Vec<String>> {
     let buf = BufReader::new(file);
     buf.lines()
         .map(|l| l.with_context(|| format!("Failed to read line from: {filename}")))
-        .filter(|result| result.as_ref().map(|s| !s.is_empty()).unwrap_or(true))
+        .filter(|result| result.as_ref().map_or(true, |s| !s.is_empty()))
         .collect()
 }
 
