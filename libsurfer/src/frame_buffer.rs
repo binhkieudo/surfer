@@ -62,7 +62,7 @@ pub(crate) struct FrameBufferContentCacheKey {
 #[derive(Debug, Clone)]
 pub(crate) struct FrameBufferArrayCache {
     pub key: FrameBufferContentCacheKey,
-    pub cached_value: Option<(String, u32)>,
+    pub cached_value: Option<std::sync::Arc<[bool]>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +74,7 @@ pub(crate) struct FrameBufferPixelCacheKey {
 #[derive(Debug, Clone)]
 pub(crate) struct FrameBufferPixelCache {
     pub key: FrameBufferPixelCacheKey,
-    pub pixel_colors: Vec<Color32>,
+    pub pixel_colors: std::sync::Arc<[Color32]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,7 +96,8 @@ impl SystemState {
             .resizable(true)
             .show(ctx, |ui| {
                 let frame_buffer_value = self.selected_variable_for_frame_buffer();
-                let Some((value, word_length, variable_name)) = frame_buffer_value.as_ref() else {
+                let Some((bits, array_cache_key, variable_name)) = frame_buffer_value.as_ref()
+                else {
                     ui.label("Place the cursor.");
                     return;
                 };
@@ -129,21 +130,14 @@ impl SystemState {
 
                 ui.separator();
 
-                let bits = frame_buffer_bits(value, *word_length as usize);
                 if bits.is_empty() {
                     ui.label("No bits available");
                     return;
                 }
 
-                let Some(pixel_cache_key) =
-                    self.current_frame_buffer_array_cache_key()
-                        .map(|array_key| FrameBufferPixelCacheKey {
-                            array_key,
-                            settings: color_settings_key.clone(),
-                        })
-                else {
-                    ui.label("Place the cursor.");
-                    return;
+                let pixel_cache_key = FrameBufferPixelCacheKey {
+                    array_key: array_cache_key.clone(),
+                    settings: color_settings_key.clone(),
                 };
 
                 let pixel_colors = if let Some(cache) = self
@@ -162,11 +156,13 @@ impl SystemState {
                             ui.label("Set at least one RGB channel bit count above zero.");
                             return;
                         }
-                        decode_rgb_pixels(&bits, r_bits, g_bits, b_bits)
+                        decode_rgb_pixels(bits, r_bits, g_bits, b_bits)
                     } else {
                         let gray_bits = color_settings_key.grayscale_bits as usize;
-                        decode_grayscale_pixels(&bits, gray_bits)
+                        decode_grayscale_pixels(bits, gray_bits)
                     };
+
+                    let decoded: std::sync::Arc<[Color32]> = decoded.into();
 
                     self.frame_buffer_pixel_cache = Some(FrameBufferPixelCache {
                         key: pixel_cache_key,
@@ -188,7 +184,7 @@ impl SystemState {
 
                     if ui.button("Copy image").clicked() {
                         let total = columns * rows;
-                        let mut padded = pixel_colors.clone();
+                        let mut padded = pixel_colors.to_vec();
                         padded.resize(total, Color32::BLACK);
                         ui.ctx().copy_image(egui::ColorImage {
                             size: [columns, rows],
@@ -301,7 +297,9 @@ impl SystemState {
         }
     }
 
-    fn selected_variable_for_frame_buffer(&mut self) -> Option<(VariableValue, u32, String)> {
+    fn selected_variable_for_frame_buffer(
+        &mut self,
+    ) -> Option<(std::sync::Arc<[bool]>, FrameBufferContentCacheKey, String)> {
         let waves = self.user.waves.as_ref()?;
         let cursor = waves.cursor.as_ref()?.to_biguint()?;
         let wave_container = waves.inner.as_waves()?;
@@ -345,28 +343,14 @@ impl SystemState {
             cached
         };
 
-        let (concat_bits, total_bits) = cached.cached_value.as_ref()?;
+        let bits = cached.cached_value.as_ref()?.clone();
 
         let variable_name = match &content {
             FrameBufferContent::Variable(variable_ref) => variable_ref.full_path_string_no_index(),
             FrameBufferContent::Array { scope_ref, .. } => scope_ref.full_name(),
         };
 
-        Some((
-            VariableValue::String(concat_bits.clone()),
-            *total_bits,
-            variable_name,
-        ))
-    }
-
-    fn current_frame_buffer_array_cache_key(&self) -> Option<FrameBufferContentCacheKey> {
-        let waves = self.user.waves.as_ref()?;
-        let cursor_position = waves.cursor.as_ref()?.to_biguint()?;
-        let content = self.frame_buffer_content.clone()?;
-        Some(FrameBufferContentCacheKey {
-            content,
-            cursor_position,
-        })
+        Some((bits, cached.key.clone(), variable_name))
     }
 }
 
@@ -374,33 +358,54 @@ fn build_cached_variable_value(
     wave_container: &WaveContainer,
     sorted_variables: &[VariableRef],
     cursor: &num::BigUint,
-) -> Option<(String, u32)> {
-    let mut concat_bits = String::new();
-    let mut total_bits: u32 = 0;
+) -> Option<std::sync::Arc<[bool]>> {
+    // First pass: sum bit widths for pre-allocation.
+    let capacity: usize = sorted_variables
+        .iter()
+        .filter_map(|v| wave_container.variable_meta(v).ok()?.num_bits)
+        .map(|b| b as usize)
+        .sum();
+
+    if capacity == 0 {
+        return None;
+    }
+
+    let mut concat_bits: Vec<bool> = Vec::with_capacity(capacity);
+
     for var_ref in sorted_variables {
-        let meta = wave_container.variable_meta(var_ref).ok()?;
-        let bits = meta.num_bits? as usize;
-        total_bits += bits as u32;
-        let query_result = wave_container
+        let Ok(meta) = wave_container.variable_meta(var_ref) else {
+            continue;
+        };
+        let Some(bits) = meta.num_bits else {
+            continue;
+        };
+        let bits = bits as usize;
+
+        // On missing or unavailable signal, pad with zeros to preserve alignment.
+        let value = wave_container
             .query_variable(var_ref, cursor)
             .ok()
-            .flatten()?;
-        let (_, value) = query_result.current?;
-        let bit_str = match &value {
-            VariableValue::BigUint(v) => format!("{v:b}"),
-            VariableValue::String(s) => s.clone(),
-        };
-        let padded = if bit_str.len() < bits {
-            format!("{bit_str:0>bits$}")
-        } else {
-            bit_str[bit_str.len() - bits..].to_string()
-        };
-        concat_bits.push_str(&padded);
+            .flatten()
+            .and_then(|q| q.current)
+            .map(|(_, v)| v);
+
+        match value {
+            Some(VariableValue::BigUint(v)) => {
+                append_biguint_lower_bits_with_left_zero_pad(&v, bits, &mut concat_bits);
+            }
+            Some(VariableValue::String(s)) => {
+                append_str_lower_bits_with_left_zero_pad(&s, bits, &mut concat_bits);
+            }
+            None => {
+                concat_bits.extend(std::iter::repeat_n(false, bits));
+            }
+        }
     }
-    if total_bits == 0 {
+
+    if concat_bits.is_empty() {
         None
     } else {
-        Some((concat_bits, total_bits))
+        Some(concat_bits.into())
     }
 }
 
@@ -417,19 +422,11 @@ fn build_variable_frame_buffer_cache(
         .ok()
         .flatten()?;
     let (_, value) = query_result.current?;
-    let bits = match value {
-        VariableValue::BigUint(v) => format!("{v:b}"),
-        VariableValue::String(s) => s,
-    };
-    let padded = if bits.len() < word_length {
-        format!("{bits:0>word_length$}")
-    } else {
-        bits[bits.len() - word_length..].to_string()
-    };
+    let padded: std::sync::Arc<[bool]> = frame_buffer_bits(&value, word_length).into();
 
     Some(FrameBufferArrayCache {
         key,
-        cached_value: Some((padded, word_length as u32)),
+        cached_value: Some(padded),
     })
 }
 
@@ -586,29 +583,74 @@ fn variable_array_index(var_ref: &VariableRef) -> i64 {
 }
 
 fn frame_buffer_bits(value: &VariableValue, word_length: usize) -> Vec<bool> {
-    let mut bits: Vec<bool> = match value {
-        VariableValue::BigUint(v) => format!("{v:b}").chars().map(|c| c == '1').collect(),
-        VariableValue::String(v) => v.chars().map(|c| c == '1').collect(),
-    };
+    match value {
+        VariableValue::BigUint(v) => {
+            let mut out = Vec::with_capacity(word_length);
+            append_biguint_lower_bits_with_left_zero_pad(v, word_length, &mut out);
+            out
+        }
+        VariableValue::String(v) => bits_with_left_zero_pad(v, word_length),
+    }
+}
 
-    if bits.len() < word_length {
-        let mut padded = vec![false; word_length - bits.len()];
-        padded.extend(bits);
-        bits = padded;
-    } else if bits.len() > word_length {
-        bits = bits[bits.len() - word_length..].to_vec();
+fn append_str_lower_bits_with_left_zero_pad(src: &str, width: usize, out: &mut Vec<bool>) {
+    if width == 0 {
+        return;
     }
 
-    bits
+    let start = src.len().saturating_sub(width);
+    let suffix = &src.as_bytes()[start..];
+
+    for _ in suffix.len()..width {
+        out.push(false);
+    }
+    out.extend(suffix.iter().map(|b| *b == b'1'));
+}
+
+fn append_biguint_lower_bits_with_left_zero_pad(
+    value: &num::BigUint,
+    width: usize,
+    out: &mut Vec<bool>,
+) {
+    if width == 0 {
+        return;
+    }
+
+    let value_bits = value.bits() as usize;
+    if value_bits >= width {
+        for bit_idx in (0..width).rev() {
+            out.push(value.bit(bit_idx as u64));
+        }
+    } else {
+        for _ in 0..(width - value_bits) {
+            out.push(false);
+        }
+        for bit_idx in (0..value_bits).rev() {
+            out.push(value.bit(bit_idx as u64));
+        }
+    }
+}
+
+fn bits_with_left_zero_pad(src: &str, width: usize) -> Vec<bool> {
+    let mut out = Vec::with_capacity(width);
+    append_str_lower_bits_with_left_zero_pad(src, width, &mut out);
+    out
 }
 
 fn decode_grayscale_pixels(bits: &[bool], grayscale_bits: usize) -> Vec<Color32> {
-    let mut out = Vec::with_capacity(bits.len().div_ceil(grayscale_bits.max(1)));
-    for start in (0..bits.len()).step_by(grayscale_bits.max(1)) {
-        let gray = scale_to_u8(
-            bits_to_u16_padded(bits, start, grayscale_bits),
-            grayscale_bits,
-        );
+    let step = grayscale_bits.max(1);
+    let full = bits.len() / step;
+    let has_tail = !bits.len().is_multiple_of(step);
+    let mut out = Vec::with_capacity(full + usize::from(has_tail));
+    // Fast path: full groups — no bounds checks needed.
+    for start in (0..full * step).step_by(step) {
+        let gray = scale_to_u8(bits_to_u16(&bits[start..start + step]), step);
+        out.push(Color32::from_rgb(gray, gray, gray));
+    }
+    // Slow path: partial trailing group.
+    if has_tail {
+        let start = full * step;
+        let gray = scale_to_u8(bits_to_u16_padded(bits, start, step), step);
         out.push(Color32::from_rgb(gray, gray, gray));
     }
     out
@@ -616,8 +658,26 @@ fn decode_grayscale_pixels(bits: &[bool], grayscale_bits: usize) -> Vec<Color32>
 
 fn decode_rgb_pixels(bits: &[bool], r_bits: usize, g_bits: usize, b_bits: usize) -> Vec<Color32> {
     let bits_per_pixel = r_bits + g_bits + b_bits;
-    let mut out = Vec::with_capacity(bits.len().div_ceil(bits_per_pixel.max(1)));
-    for start in (0..bits.len()).step_by(bits_per_pixel.max(1)) {
+    let step = bits_per_pixel.max(1);
+    let full = bits.len() / step;
+    let has_tail = !bits.len().is_multiple_of(step);
+    let mut out = Vec::with_capacity(full + usize::from(has_tail));
+    // Fast path: full pixels — no bounds checks needed.
+    for start in (0..full * step).step_by(step) {
+        let red = scale_to_u8(bits_to_u16(&bits[start..start + r_bits]), r_bits);
+        let green = scale_to_u8(
+            bits_to_u16(&bits[start + r_bits..start + r_bits + g_bits]),
+            g_bits,
+        );
+        let blue = scale_to_u8(
+            bits_to_u16(&bits[start + r_bits + g_bits..start + step]),
+            b_bits,
+        );
+        out.push(Color32::from_rgb(red, green, blue));
+    }
+    // Slow path: partial trailing pixel.
+    if has_tail {
+        let start = full * step;
         let red = scale_to_u8(bits_to_u16_padded(bits, start, r_bits), r_bits);
         let green = scale_to_u8(bits_to_u16_padded(bits, start + r_bits, g_bits), g_bits);
         let blue = scale_to_u8(
@@ -629,10 +689,20 @@ fn decode_rgb_pixels(bits: &[bool], r_bits: usize, g_bits: usize, b_bits: usize)
     out
 }
 
+/// Reads up to `len` bits starting at `start`, zero-padding if out of bounds.
 fn bits_to_u16_padded(bits: &[bool], start: usize, len: usize) -> u16 {
     let mut value = 0u16;
     for offset in 0..len {
         value = (value << 1) | u16::from(bits.get(start + offset).copied().unwrap_or(false));
+    }
+    value
+}
+
+/// Reads exactly `bits.len()` bits from a known in-bounds slice — no bounds checks.
+fn bits_to_u16(bits: &[bool]) -> u16 {
+    let mut value = 0u16;
+    for &b in bits {
+        value = (value << 1) | u16::from(b);
     }
     value
 }
