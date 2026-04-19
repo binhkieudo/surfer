@@ -557,10 +557,8 @@ impl SystemState {
                 // Disable file window in case executing from command/test
                 self.user.show_server_file_window = false;
                 let force_switch = self.user.selected_server_file_index != file_index;
-                self.user.selected_server_file_index = file_index;
-                *self.surver_selected_file.borrow_mut() = file_index;
                 if let Some(url) = self.user.surver_url.as_ref() {
-                    self.load_wave_from_url(url.clone(), load_options, force_switch);
+                    self.load_wave_from_url(url.clone(), load_options, force_switch, file_index);
                 }
             }
             Message::LoadSurverFileByName(file_name, load_options) => {
@@ -574,10 +572,8 @@ impl SystemState {
                     .position(|fi| fi.filename == file_name);
                 let force_switch = self.user.selected_server_file_index != file_index;
 
-                self.user.selected_server_file_index = file_index;
-                *self.surver_selected_file.borrow_mut() = file_index;
                 if let Some(url) = self.user.surver_url.as_ref() {
-                    self.load_wave_from_url(url.clone(), load_options, force_switch);
+                    self.load_wave_from_url(url.clone(), load_options, force_switch, file_index);
                 }
             }
             Message::RemoveVisibleItems(target) => match target {
@@ -1088,7 +1084,7 @@ impl SystemState {
                 self.user.selected_server_file_index = None;
                 *self.surver_selected_file.borrow_mut() = None;
                 // If we provide URL at command line and it is a Surver URL, we want to force a switch
-                self.load_wave_from_url(url, load_options, true);
+                self.load_wave_from_url(url, load_options, true, None);
             }
             Message::LoadFromData(data, load_options) => {
                 self.user.selected_server_file_index = None;
@@ -1140,13 +1136,11 @@ impl SystemState {
                 if self.user.selected_server_file_index.is_none() {
                     if status.file_infos.len() == 1 {
                         // if only one file is available, select it automatically
-                        self.user.selected_server_file_index = Some(0);
-                        *self.surver_selected_file.borrow_mut() = Some(0);
                         info!(
                             "Only one file available on server {}, loading it automatically",
                             server
                         );
-                        self.load_wave_from_url(server.clone(), LoadOptions::Clear, false);
+                        self.load_wave_from_url(server.clone(), LoadOptions::Clear, false, Some(0));
                     } else {
                         // if no file is selected, show the server file selection window
                         self.user.show_server_file_window = true;
@@ -1213,6 +1207,7 @@ impl SystemState {
                         let new_waves = Box::new(WaveContainer::new_remote_waveform(
                             &server,
                             hierarchy.clone(),
+                            file_index,
                         ));
                         self.on_waves_loaded(
                             source.clone(),
@@ -1425,7 +1420,12 @@ impl SystemState {
                             .and_then(|filename| self.load_from_file(filename, options).ok());
                     }
                     WaveSource::Url(url) => {
-                        self.load_wave_from_url(url.clone(), options, false);
+                        self.load_wave_from_url(
+                            url.clone(),
+                            options,
+                            false,
+                            self.user.selected_server_file_index,
+                        );
                     }
                 }
 

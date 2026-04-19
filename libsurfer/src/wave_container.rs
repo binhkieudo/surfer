@@ -306,17 +306,19 @@ pub enum WaveContainer {
 impl WaveContainer {
     #[must_use]
     pub fn new_waveform(hierarchy: std::sync::Arc<wellen::Hierarchy>) -> Self {
-        WaveContainer::Wellen(Box::new(WellenContainer::new(hierarchy, None)))
+        WaveContainer::Wellen(Box::new(WellenContainer::new(hierarchy, None, None)))
     }
 
     #[must_use]
     pub fn new_remote_waveform(
         server_url: &str,
         hierarchy: std::sync::Arc<wellen::Hierarchy>,
+        file_index: usize,
     ) -> Self {
         WaveContainer::Wellen(Box::new(WellenContainer::new(
             hierarchy,
             Some(server_url.to_string()),
+            Some(file_index),
         )))
     }
 

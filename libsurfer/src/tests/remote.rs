@@ -117,6 +117,34 @@ snapshot_ui_remote!(
 );
 
 snapshot_ui_remote!(
+    example_fst_renders_with_multiple_files,
+    [
+        "examples/counter.vcd",
+        "examples/counter2.vcd",
+        "examples/many_sv_datatypes.fst",
+        "examples/theme_demo.ghw"
+    ],
+    [
+        Message::LoadSurverFileByIndex(Some(2), LoadOptions::Clear),
+        Message::AddScope(ScopeRef::from_strs(&["TOP"]), true),
+    ]
+);
+
+snapshot_ui_remote!(
+    example_ghw_renders_with_multiple_files,
+    [
+        "examples/counter.vcd",
+        "examples/counter2.vcd",
+        "examples/theme_demo.ghw",
+        "examples/many_sv_datatypes.fst"
+    ],
+    [
+        Message::LoadSurverFileByIndex(Some(2), LoadOptions::Clear),
+        Message::AddScope(ScopeRef::from_strs(&["theme_demo"]), false),
+    ]
+);
+
+snapshot_ui_remote!(
     multiple_files_open_second,
     ["examples/counter.vcd", "examples/counter2.vcd"],
     [

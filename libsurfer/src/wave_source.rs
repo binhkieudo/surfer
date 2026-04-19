@@ -351,7 +351,13 @@ impl SystemState {
         url: String,
         load_options: LoadOptions,
         force_switch: bool,
+        file_index: Option<usize>,
     ) {
+        if file_index.is_some() {
+            self.user.selected_server_file_index = file_index;
+            *self.surver_selected_file.borrow_mut() = file_index;
+        }
+
         match url_to_wavesource(&url) {
             // We want to support opening cxxrtl urls using open url and friends,
             // so we'll special case
@@ -364,7 +370,6 @@ impl SystemState {
             _ => {
                 let sender = self.channels.msg_sender.clone();
                 let url_ = url.clone();
-                let file_index = self.user.selected_server_file_index;
                 info!("Loading wave from url: {url}");
                 perform_async_work(async move {
                     let maybe_response = reqwest::get(&url)
@@ -681,15 +686,22 @@ impl SystemState {
                     }
                 });
             }
-            LoadSignalPayload::Remote(server) => {
+            LoadSignalPayload::Remote(server, file_index) => {
                 perform_async_work(async move {
                     let res =
-                        crate::remote::get_signals(server.clone(), &signals, max_url_length, 0)
-                            .await
-                            .map_err(|e| anyhow!("{e:?}"))
-                            .with_context(|| {
-                                format!("Failed to retrieve signals from remote server {server}")
-                            });
+                        crate::remote::get_signals(
+                            server.clone(),
+                            &signals,
+                            max_url_length,
+                            file_index,
+                        )
+                        .await
+                        .map_err(|e| anyhow!("{e:?}"))
+                        .with_context(|| {
+                            format!(
+                                "Failed to retrieve signals from remote server {server} file index {file_index}"
+                            )
+                        });
 
                     let msg = match res {
                         Ok(loaded) => {
