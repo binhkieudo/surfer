@@ -995,6 +995,44 @@ fn get_ticks_internal(
     ticks
 }
 
+/// Parse a time string (optionally with units) and convert to timescale ticks.
+///
+/// Accepts plain integers (`"100"`) and unit-suffixed values (`"100ns"`, `"1.5 ms"`).
+/// When no unit is present the value is treated as raw timescale ticks (same as the
+/// previous behaviour of `cursor_set`).
+/// Returns `None` if the input cannot be parsed.
+pub(crate) fn parse_time_string_to_ticks(input: &str, timescale: &TimeScale) -> Option<BigInt> {
+    let (numeric_str, unit_opt) = parse_time_input(input);
+
+    let base_unit = unit_opt.unwrap_or(TimeUnit::None);
+    let (value, normalized_unit) = normalize_numeric_with_unit(&numeric_str, base_unit).ok()?;
+
+    if normalized_unit == TimeUnit::None {
+        // No unit: treat value as raw ticks (plain integer path)
+        return Some(value);
+    }
+
+    let unit_exp = normalized_unit.exponent();
+    let data_exp = timescale.unit.exponent();
+    let diff = unit_exp - data_exp;
+
+    let mut result = value;
+    if diff > 0 {
+        let scale = pow10(diff as u32);
+        result *= scale;
+    } else if diff < 0 {
+        let scale = pow10((-diff) as u32);
+        result /= scale;
+    }
+
+    let multiplier = timescale.multiplier.unwrap_or(1);
+    if multiplier != 1 {
+        result /= BigInt::from(multiplier);
+    }
+
+    Some(result)
+}
+
 #[cfg(test)]
 mod test {
     use num::BigInt;
@@ -2119,5 +2157,146 @@ mod time_input_tests {
         // Clear by updating with empty string
         state.update_input(String::new());
         assert!(state.error.is_some());
+    }
+
+    // --- parse_time_string_to_ticks tests ---
+
+    fn ns_timescale() -> TimeScale {
+        TimeScale {
+            unit: TimeUnit::NanoSeconds,
+            multiplier: None,
+        }
+    }
+
+    fn ps_timescale() -> TimeScale {
+        TimeScale {
+            unit: TimeUnit::PicoSeconds,
+            multiplier: None,
+        }
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_plain_integer() {
+        // No unit: value is raw ticks
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("100", &ts),
+            Some(BigInt::from(100))
+        );
+        assert_eq!(parse_time_string_to_ticks("0", &ts), Some(BigInt::from(0)));
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_same_unit() {
+        // "100ns" with ns timescale -> 100 ticks
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("100ns", &ts),
+            Some(BigInt::from(100))
+        );
+        assert_eq!(
+            parse_time_string_to_ticks("100 ns", &ts),
+            Some(BigInt::from(100))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_coarser_unit() {
+        // "1μs" with ns timescale -> 1000 ticks
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("1us", &ts),
+            Some(BigInt::from(1000))
+        );
+        assert_eq!(
+            parse_time_string_to_ticks("1μs", &ts),
+            Some(BigInt::from(1000))
+        );
+        // "1ms" -> 1_000_000 ticks
+        assert_eq!(
+            parse_time_string_to_ticks("1ms", &ts),
+            Some(BigInt::from(1_000_000))
+        );
+        // "1s" -> 1_000_000_000 ticks
+        assert_eq!(
+            parse_time_string_to_ticks("1s", &ts),
+            Some(BigInt::from(1_000_000_000))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_finer_unit() {
+        // "1ps" with ns timescale -> truncates to 0 (1 ps < 1 ns)
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("1ps", &ts),
+            Some(BigInt::from(0))
+        );
+        // "1000ps" -> 1 ns tick
+        assert_eq!(
+            parse_time_string_to_ticks("1000ps", &ts),
+            Some(BigInt::from(1))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_decimal() {
+        // "1.5μs" with ns timescale: 1.5 μs = 1500 ns -> 1500 ticks
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("1.5us", &ts),
+            Some(BigInt::from(1500))
+        );
+        // "0.5ns" with ps timescale: 0.5 ns = 500 ps -> 500 ticks
+        let ts_ps = ps_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("0.5ns", &ts_ps),
+            Some(BigInt::from(500))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_with_whitespace() {
+        let ts = ns_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("  100 ns  ", &ts),
+            Some(BigInt::from(100))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_invalid() {
+        let ts = ns_timescale();
+        assert_eq!(parse_time_string_to_ticks("abc", &ts), None);
+        assert_eq!(parse_time_string_to_ticks("", &ts), None);
+        assert_eq!(parse_time_string_to_ticks("-5ns", &ts), None);
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_with_multiplier() {
+        // timescale multiplier=10ns: "100ns" -> 100/10 = 10 ticks
+        let ts = TimeScale {
+            unit: TimeUnit::NanoSeconds,
+            multiplier: Some(10),
+        };
+        assert_eq!(
+            parse_time_string_to_ticks("100ns", &ts),
+            Some(BigInt::from(10))
+        );
+    }
+
+    #[test]
+    fn test_parse_time_string_to_ticks_ps_timescale() {
+        // 1ns with ps timescale -> 1000 ticks
+        let ts = ps_timescale();
+        assert_eq!(
+            parse_time_string_to_ticks("1ns", &ts),
+            Some(BigInt::from(1000))
+        );
+        // plain integer stays as-is
+        assert_eq!(
+            parse_time_string_to_ticks("42", &ts),
+            Some(BigInt::from(42))
+        );
     }
 }
