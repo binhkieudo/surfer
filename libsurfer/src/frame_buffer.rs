@@ -3,10 +3,12 @@ use egui::{CornerRadius, DragValue, Pos2, Rect, Sense, Stroke};
 use serde::{Deserialize, Serialize};
 use surfer_translation_types::VariableValue;
 
+use crate::translation::ycbcr_to_rgb;
 use crate::wave_container::{ScopeRef, ScopeRefExt, VariableRef, VariableRefExt, WaveContainer};
 use crate::{Message, system_state::SystemState};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(default)]
 pub(crate) struct FrameBufferSettings {
     pub pixels_per_row: usize,
     pub square_pixels: bool,
@@ -15,22 +17,58 @@ pub(crate) struct FrameBufferSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FrameBufferColorMode {
+    Grayscale,
+    Rgb,
+    YCbCr,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(default)]
 pub(crate) struct PixelColorSettings {
-    pub rgb_mode: bool,
+    #[serde(default)]
+    pub color_mode: FrameBufferColorMode,
     pub grayscale_bits: u8,
     pub r_bits: u8,
     pub g_bits: u8,
     pub b_bits: u8,
+    #[serde(default = "default_y_bits")]
+    pub y_bits: u8,
+    #[serde(default = "default_cb_bits")]
+    pub cb_bits: u8,
+    #[serde(default = "default_cr_bits")]
+    pub cr_bits: u8,
+}
+
+fn default_y_bits() -> u8 {
+    8
+}
+
+fn default_cb_bits() -> u8 {
+    8
+}
+
+fn default_cr_bits() -> u8 {
+    8
+}
+
+impl Default for FrameBufferColorMode {
+    fn default() -> Self {
+        Self::Grayscale
+    }
 }
 
 impl Default for PixelColorSettings {
     fn default() -> Self {
         Self {
-            rgb_mode: false,
+            color_mode: FrameBufferColorMode::Grayscale,
             grayscale_bits: 1,
             r_bits: 3,
             g_bits: 3,
             b_bits: 2,
+            y_bits: default_y_bits(),
+            cb_bits: default_cb_bits(),
+            cr_bits: default_cr_bits(),
         }
     }
 }
@@ -107,22 +145,63 @@ impl SystemState {
                     let color_settings = &mut settings.color_settings;
 
                     ui.checkbox(&mut settings.square_pixels, "Square pixels");
-                    ui.checkbox(&mut color_settings.rgb_mode, "RGB mode");
 
-                    if color_settings.rgb_mode {
-                        ui.horizontal(|ui| {
-                            ui.label("R bits");
-                            ui.add(DragValue::new(&mut color_settings.r_bits).range(0..=8));
-                            ui.label("G bits");
-                            ui.add(DragValue::new(&mut color_settings.g_bits).range(0..=8));
-                            ui.label("B bits");
-                            ui.add(DragValue::new(&mut color_settings.b_bits).range(0..=8));
-                        });
-                    } else {
-                        ui.horizontal(|ui| {
-                            ui.label("Grayscale bits");
-                            ui.add(DragValue::new(&mut color_settings.grayscale_bits).range(1..=8));
-                        });
+                    ui.horizontal(|ui| {
+                        ui.label("Color mode");
+                        egui::ComboBox::from_id_salt("frame_buffer_color_mode")
+                            .selected_text(match color_settings.color_mode {
+                                FrameBufferColorMode::Grayscale => "Grayscale",
+                                FrameBufferColorMode::Rgb => "RGB",
+                                FrameBufferColorMode::YCbCr => "YCbCr",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut color_settings.color_mode,
+                                    FrameBufferColorMode::Grayscale,
+                                    "Grayscale",
+                                );
+                                ui.selectable_value(
+                                    &mut color_settings.color_mode,
+                                    FrameBufferColorMode::Rgb,
+                                    "RGB",
+                                );
+                                ui.selectable_value(
+                                    &mut color_settings.color_mode,
+                                    FrameBufferColorMode::YCbCr,
+                                    "YCbCr",
+                                );
+                            });
+                    });
+
+                    match color_settings.color_mode {
+                        FrameBufferColorMode::Grayscale => {
+                            ui.horizontal(|ui| {
+                                ui.label("Grayscale bits");
+                                ui.add(
+                                    DragValue::new(&mut color_settings.grayscale_bits).range(1..=8),
+                                );
+                            });
+                        }
+                        FrameBufferColorMode::Rgb => {
+                            ui.horizontal(|ui| {
+                                ui.label("R bits");
+                                ui.add(DragValue::new(&mut color_settings.r_bits).range(0..=8));
+                                ui.label("G bits");
+                                ui.add(DragValue::new(&mut color_settings.g_bits).range(0..=8));
+                                ui.label("B bits");
+                                ui.add(DragValue::new(&mut color_settings.b_bits).range(0..=8));
+                            });
+                        }
+                        FrameBufferColorMode::YCbCr => {
+                            ui.horizontal(|ui| {
+                                ui.label("Y bits");
+                                ui.add(DragValue::new(&mut color_settings.y_bits).range(0..=8));
+                                ui.label("Cb bits");
+                                ui.add(DragValue::new(&mut color_settings.cb_bits).range(0..=8));
+                                ui.label("Cr bits");
+                                ui.add(DragValue::new(&mut color_settings.cr_bits).range(0..=8));
+                            });
+                        }
                     }
 
                     color_settings.clone()
@@ -147,19 +226,33 @@ impl SystemState {
                 {
                     cache.pixel_colors.clone()
                 } else {
-                    let decoded = if color_settings_key.rgb_mode {
-                        let r_bits = color_settings_key.r_bits as usize;
-                        let g_bits = color_settings_key.g_bits as usize;
-                        let b_bits = color_settings_key.b_bits as usize;
-                        let bits_per_pixel = r_bits + g_bits + b_bits;
-                        if bits_per_pixel == 0 {
-                            ui.label("Set at least one RGB channel bit count above zero.");
-                            return;
+                    let decoded = match color_settings_key.color_mode {
+                        FrameBufferColorMode::Rgb => {
+                            let r_bits = color_settings_key.r_bits as usize;
+                            let g_bits = color_settings_key.g_bits as usize;
+                            let b_bits = color_settings_key.b_bits as usize;
+                            let bits_per_pixel = r_bits + g_bits + b_bits;
+                            if bits_per_pixel == 0 {
+                                ui.label("Set at least one RGB channel bit count above zero.");
+                                return;
+                            }
+                            decode_rgb_pixels(bits, r_bits, g_bits, b_bits)
                         }
-                        decode_rgb_pixels(bits, r_bits, g_bits, b_bits)
-                    } else {
-                        let gray_bits = color_settings_key.grayscale_bits as usize;
-                        decode_grayscale_pixels(bits, gray_bits)
+                        FrameBufferColorMode::YCbCr => {
+                            let y_bits = color_settings_key.y_bits as usize;
+                            let cb_bits = color_settings_key.cb_bits as usize;
+                            let cr_bits = color_settings_key.cr_bits as usize;
+                            let bits_per_pixel = y_bits + cb_bits + cr_bits;
+                            if bits_per_pixel == 0 {
+                                ui.label("Set at least one YCbCr channel bit count above zero.");
+                                return;
+                            }
+                            decode_ycbcr_pixels(bits, y_bits, cb_bits, cr_bits)
+                        }
+                        FrameBufferColorMode::Grayscale => {
+                            let gray_bits = color_settings_key.grayscale_bits as usize;
+                            decode_grayscale_pixels(bits, gray_bits)
+                        }
                     };
 
                     let decoded: std::sync::Arc<[Color32]> = decoded.into();
@@ -689,6 +782,49 @@ fn decode_rgb_pixels(bits: &[bool], r_bits: usize, g_bits: usize, b_bits: usize)
     out
 }
 
+fn decode_ycbcr_pixels(
+    bits: &[bool],
+    y_bits: usize,
+    cb_bits: usize,
+    cr_bits: usize,
+) -> Vec<Color32> {
+    let bits_per_pixel = y_bits + cb_bits + cr_bits;
+    let step = bits_per_pixel.max(1);
+    let full = bits.len() / step;
+    let has_tail = !bits.len().is_multiple_of(step);
+    let mut out = Vec::with_capacity(full + usize::from(has_tail));
+
+    // Fast path: full pixels — no bounds checks needed.
+    for start in (0..full * step).step_by(step) {
+        let y = scale_to_u8(bits_to_u16(&bits[start..start + y_bits]), y_bits);
+        let cb = scale_to_u8(
+            bits_to_u16(&bits[start + y_bits..start + y_bits + cb_bits]),
+            cb_bits,
+        );
+        let cr = scale_to_u8(
+            bits_to_u16(&bits[start + y_bits + cb_bits..start + step]),
+            cr_bits,
+        );
+        let (red, green, blue) = ycbcr_to_rgb(y, cb, cr);
+        out.push(Color32::from_rgb(red, green, blue));
+    }
+
+    // Slow path: partial trailing pixel.
+    if has_tail {
+        let start = full * step;
+        let y = scale_to_u8(bits_to_u16_padded(bits, start, y_bits), y_bits);
+        let cb = scale_to_u8(bits_to_u16_padded(bits, start + y_bits, cb_bits), cb_bits);
+        let cr = scale_to_u8(
+            bits_to_u16_padded(bits, start + y_bits + cb_bits, cr_bits),
+            cr_bits,
+        );
+        let (red, green, blue) = ycbcr_to_rgb(y, cb, cr);
+        out.push(Color32::from_rgb(red, green, blue));
+    }
+
+    out
+}
+
 /// Reads up to `len` bits starting at `start`, zero-padding if out of bounds.
 fn bits_to_u16_padded(bits: &[bool], start: usize, len: usize) -> u16 {
     let mut value = 0u16;
@@ -764,6 +900,18 @@ mod tests {
         let pixels = decode_rgb_pixels(&bits, 2, 2, 2);
         assert_eq!(pixels.len(), 1);
         assert_eq!(pixels[0], Color32::from_rgb(170, 85, 170));
+    }
+
+    #[test]
+    fn decode_ycbcr_pixels_supports_8bit_channels() {
+        let bits = vec![
+            true, false, false, false, false, false, false, false, // Y=128
+            true, false, false, false, false, false, false, false, // Cb=128
+            true, false, false, false, false, false, false, false, // Cr=128
+        ];
+        let pixels = decode_ycbcr_pixels(&bits, 8, 8, 8);
+        assert_eq!(pixels.len(), 1);
+        assert_eq!(pixels[0], Color32::from_rgb(128, 128, 128));
     }
 
     #[test]

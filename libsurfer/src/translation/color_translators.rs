@@ -134,7 +134,7 @@ impl BasicTranslator<VarId, ScopeId> for GrayScaleTranslator {
 
 // Convert YCbCr (BT.601) to RGB. Inputs and outputs are 8-bit.
 // Uses floating-point coefficients with rounding and clamps to [0, 255].
-fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
+pub fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let y_f = f32::from(y);
     let cb_i = (i32::from(cb) - 128) as f32;
     let cr_i = (i32::from(cr) - 128) as f32;

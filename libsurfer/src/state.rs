@@ -37,6 +37,7 @@ use tracing::{error, info, trace, warn};
 
 /// The parts of the program state that need to be serialized when loading/saving state
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct UserState {
     #[serde(skip)]
     pub config: SurferConfig,

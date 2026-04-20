@@ -28,6 +28,7 @@ pub mod wasm_translator;
 
 pub use basic_translators::*;
 use clock::ClockTranslator;
+pub(crate) use color_translators::ycbcr_to_rgb;
 use event_translator::EventTranslator;
 #[cfg(not(target_arch = "wasm32"))]
 use instruction_decoder::Decoder;
