@@ -317,6 +317,7 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
             "save_state_as",
             "timeline_add",
             "cursor_set",
+            "goto_time",
             "marker_set",
             "marker_remove",
             "show_marker_window",
@@ -841,6 +842,20 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
                                 Message::CursorSet(time),
                                 Message::GoToCursorIfNotInView,
                             ])))
+                        }),
+                    )
+                }
+                "goto_time" => {
+                    let timescale_for_goto = timescale.clone();
+                    single_word(
+                        vec![],
+                        Box::new(move |time_str| {
+                            let time = if let Some(ts) = &timescale_for_goto {
+                                crate::time::parse_time_string_to_ticks(time_str, ts)?
+                            } else {
+                                time_str.parse().ok()?
+                            };
+                            Some(Command::Terminal(Message::GoToTime(Some(time), 0)))
                         }),
                     )
                 }
