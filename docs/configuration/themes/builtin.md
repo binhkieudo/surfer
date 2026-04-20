@@ -32,13 +32,13 @@ The following are examples of the built-in themes available in Surfer.
 
 ## Petroff Dark
 
-Based on the article by Petroff https://doi.org/10.48550/arXiv.2107.02270.
+Based on the article by Petroff <https://doi.org/10.48550/arXiv.2107.02270>.
 
 ![Surfer Petroff dark theme](theme_petroff_dark.png)
 
 ## Petroff Light
 
-Based on the article by Petroff https://doi.org/10.48550/arXiv.2107.02270.
+Based on the article by Petroff <https://doi.org/10.48550/arXiv.2107.02270>.
 
 ![Surfer Petroff light theme](theme_petroff_light.png)
 
