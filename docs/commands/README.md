@@ -136,6 +136,10 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 
   Move cursor to next transition of focused item. Scroll if not visible.
 
+* ``goto_time <TIME>``
+
+  Center the view at the given time without moving the cursor. ``TIME`` can be a plain integer (raw timescale ticks) or a value with a time unit, e.g. ``100ns``, ``1.5 ms``, ``2us``.
+
 * ``transition_previous``
 
   Move cursor to previous transition of focused item. Scroll if not visible.
@@ -193,7 +197,7 @@ Set if the design hierarchy is shown with scopes and variables separated or as a
 
 * ``cursor_set <TIME>``
 
-  Move cursor to given time.
+  Move cursor to given time and scroll to it if not in view. ``TIME`` can be a plain integer (raw timescale ticks) or a value with a time unit, e.g. ``100ns``, ``1.5 ms``, ``2us``.
 
 * ``marker_set  <MARKER_NAME> | #<MARKER_NUMBER>``
 
