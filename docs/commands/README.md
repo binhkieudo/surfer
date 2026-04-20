@@ -211,6 +211,46 @@ Set if the design hierarchy is shown with scopes and variables separated or as a
 
   Display window with markers and differences between markers
 
+## Frame buffer
+
+* ``frame_buffer_set_array <SCOPE_NAME>`` / ``frame_buffer_set_variable <VARIABLE_NAME>``
+
+  Set the data source for the frame buffer. Use ``frame_buffer_set_array`` to source pixel data
+  from a memory array (a scope), or ``frame_buffer_set_variable`` to source it from a single
+  variable.
+
+* ``frame_buffer_set_mode <grayscale | rgb | ycbcr> <BITS> [BITS2 BITS3]``
+
+  Set the color mode and bit widths used when decoding pixels.
+
+  * ``grayscale <BITS>`` — each pixel is a single grey value of `BITS` bits (1–8).
+  * ``rgb <R_BITS> <G_BITS> <B_BITS>`` — each pixel is packed as red/green/blue with the given bit widths (each 0–8).
+  * ``ycbcr <Y_BITS> <CB_BITS> <CR_BITS>`` — each pixel is packed as Y/Cb/Cr (BT.601) with the given bit widths (each 0–8).
+
+  Examples:
+
+  ```
+  frame_buffer_set_mode grayscale 8
+  frame_buffer_set_mode rgb 5 6 5
+  frame_buffer_set_mode ycbcr 8 8 8
+  ```
+
+* ``frame_buffer_set_width <WIDTH>``
+
+  Set the number of pixels per row in the frame buffer display.
+
+* ``frame_buffer_set_range <FIRST> <LAST> [FIRST2 LAST2 ...]``
+
+  Set the displayed index range for each array level. Pairs of integers are matched to levels
+  in order; extra pairs beyond the number of levels are ignored. Each value is clamped to the
+  valid range of its level, and if `FIRST` > `LAST` the values are swapped automatically.
+
+  Example — set level 0 to rows 0–479 and level 1 to columns 0–639:
+
+  ```
+  frame_buffer_set_range 0 479 0 639
+  ```
+
 ## Interactive simulation
 
 * ``pause_simulation``

@@ -113,7 +113,7 @@ use crate::displayed_item::{
 };
 use crate::displayed_item_tree::VisibleItemIndex;
 use crate::drawing_canvas::TxDrawingCommands;
-use crate::frame_buffer::{FrameBufferContent, build_frame_buffer_content};
+use crate::frame_buffer::{FrameBufferColorMode, FrameBufferContent, build_frame_buffer_content};
 use crate::message::Message;
 use crate::transaction_container::{TransactionRef, TransactionStreamRef};
 use crate::translation::{AnyTranslator, all_translators};
@@ -530,6 +530,46 @@ impl SystemState {
                     self.load_variables(cmd);
                 }
                 self.frame_buffer_content = Some(FrameBufferContent::Array { scope_ref, levels });
+            }
+            Message::SetFrameBufferMode(mode, bits1, bits2, bits3) => {
+                let settings = &mut self.user.frame_buffer.color_settings;
+                settings.color_mode = mode;
+                match mode {
+                    FrameBufferColorMode::Grayscale => {
+                        settings.grayscale_bits = bits1.clamp(1, 8);
+                    }
+                    FrameBufferColorMode::Rgb => {
+                        settings.r_bits = bits1.min(8);
+                        settings.g_bits = bits2.min(8);
+                        settings.b_bits = bits3.min(8);
+                    }
+                    FrameBufferColorMode::YCbCr => {
+                        settings.y_bits = bits1.min(8);
+                        settings.cb_bits = bits2.min(8);
+                        settings.cr_bits = bits3.min(8);
+                    }
+                }
+                self.frame_buffer_pixel_cache = None;
+            }
+            Message::SetFrameBufferWidth(width) => {
+                self.user.frame_buffer.pixels_per_row = width.max(1);
+            }
+            Message::SetFrameBufferRange(ranges) => {
+                let Some(FrameBufferContent::Array { levels, .. }) =
+                    self.frame_buffer_content.as_mut()
+                else {
+                    return None;
+                };
+
+                for (level, (first, last)) in levels.iter_mut().zip(ranges) {
+                    let mut clamped_first = first.clamp(level.min_index, level.max_index);
+                    let mut clamped_last = last.clamp(level.min_index, level.max_index);
+                    if clamped_first > clamped_last {
+                        std::mem::swap(&mut clamped_first, &mut clamped_last);
+                    }
+                    level.first_index = clamped_first;
+                    level.last_index = clamped_last;
+                }
             }
             Message::SetCursorWindowVisible(visibility) => {
                 self.user.show_cursor_window = visibility;

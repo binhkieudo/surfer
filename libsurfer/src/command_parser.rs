@@ -5,6 +5,7 @@ use std::{fs, str::FromStr};
 
 use crate::config::ArrowKeyBindings;
 use crate::displayed_item_tree::{Node, VisibleItemIndex};
+use crate::frame_buffer::FrameBufferColorMode;
 use crate::fzcmd::{Command, ParamGreed};
 use crate::hierarchy::HierarchyStyle;
 use crate::message::MessageTarget;
@@ -330,6 +331,9 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
             "copy_value",
             "frame_buffer_set_array",
             "frame_buffer_set_variable",
+            "frame_buffer_set_mode",
+            "frame_buffer_set_width",
+            "frame_buffer_set_range",
             "pause_simulation",
             "unpause_simulation",
             "undo",
@@ -786,6 +790,83 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
                         Some(Command::Terminal(Message::SetFrameBufferVariable(
                             VariableRef::from_hierarchy_string(word),
                         )))
+                    }),
+                ),
+                "frame_buffer_set_mode" => Some(Command::NonTerminal(
+                    ParamGreed::Word,
+                    vec![
+                        "grayscale".to_string(),
+                        "rgb".to_string(),
+                        "ycbcr".to_string(),
+                    ],
+                    Box::new(|word, _| {
+                        let mode = match word {
+                            "grayscale" => FrameBufferColorMode::Grayscale,
+                            "rgb" => FrameBufferColorMode::Rgb,
+                            "ycbcr" => FrameBufferColorMode::YCbCr,
+                            _ => return None,
+                        };
+                        Some(Command::NonTerminal(
+                            ParamGreed::Rest,
+                            vec![],
+                            Box::new(move |rest, _| {
+                                let args: Vec<&str> = rest.split_whitespace().collect();
+                                match mode {
+                                    FrameBufferColorMode::Grayscale => {
+                                        if args.len() != 1 {
+                                            return None;
+                                        }
+                                        let bits = args[0].parse::<u8>().ok()?;
+                                        if !(1..=8).contains(&bits) {
+                                            return None;
+                                        }
+                                        Some(Command::Terminal(Message::SetFrameBufferMode(
+                                            mode, bits, 0, 0,
+                                        )))
+                                    }
+                                    FrameBufferColorMode::Rgb | FrameBufferColorMode::YCbCr => {
+                                        if args.len() != 3 {
+                                            return None;
+                                        }
+                                        let bits1 = args[0].parse::<u8>().ok()?;
+                                        let bits2 = args[1].parse::<u8>().ok()?;
+                                        let bits3 = args[2].parse::<u8>().ok()?;
+                                        if bits1 > 8 || bits2 > 8 || bits3 > 8 {
+                                            return None;
+                                        }
+                                        Some(Command::Terminal(Message::SetFrameBufferMode(
+                                            mode, bits1, bits2, bits3,
+                                        )))
+                                    }
+                                }
+                            }),
+                        ))
+                    }),
+                )),
+                "frame_buffer_set_width" => single_word(
+                    vec![],
+                    Box::new(|word| {
+                        let width = word.parse::<usize>().ok()?.max(1);
+                        Some(Command::Terminal(Message::SetFrameBufferWidth(width)))
+                    }),
+                ),
+                "frame_buffer_set_range" => single_word(
+                    vec![],
+                    Box::new(|rest| {
+                        let values: Vec<i64> = rest
+                            .split_whitespace()
+                            .map(str::parse::<i64>)
+                            .collect::<Result<_, _>>()
+                            .ok()?;
+                        if values.is_empty() || !values.len().is_multiple_of(2) {
+                            return None;
+                        }
+
+                        let pairs = values
+                            .chunks_exact(2)
+                            .map(|c| (c[0], c[1]))
+                            .collect::<Vec<_>>();
+                        Some(Command::Terminal(Message::SetFrameBufferRange(pairs)))
                     }),
                 ),
                 "dump_tree" => Some(Command::Terminal(Message::DumpTree)),

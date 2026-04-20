@@ -13,6 +13,7 @@ use surver::SurverStatus;
 use crate::async_util::AsyncJob;
 use crate::config::{PrimaryMouseDrag, TransitionValue};
 use crate::displayed_item_tree::{ItemIndex, VisibleItemIndex};
+use crate::frame_buffer::FrameBufferColorMode;
 use crate::graphics::{Graphic, GraphicId};
 use crate::hierarchy::{ParameterDisplayLocation, ScopeExpandType};
 use crate::state::UserState;
@@ -309,6 +310,9 @@ pub enum Message {
     SetFrameBufferVariable(VariableRef),
     SetFrameBufferVisibleVariable(Option<VisibleItemIndex>),
     SetFrameBufferArray(ScopeRef),
+    SetFrameBufferMode(FrameBufferColorMode, u8, u8, u8),
+    SetFrameBufferWidth(usize),
+    SetFrameBufferRange(Vec<(i64, i64)>),
     SetMouseGestureDragStart(Option<Pos2>),
     SetMeasureDragStart(Option<Pos2>),
     SetFilterFocused(bool),

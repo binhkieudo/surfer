@@ -1148,6 +1148,22 @@ snapshot_ui_with_file_and_msgs! {framebuffer_multidimensional_array, "examples/a
     Message::SetFrameBufferArray(ScopeRef::from_hierarchy_string("arrays_testbench.arr_1d_2d_as_3d"))
 ]}
 
+snapshot_ui_with_file_and_msgs! {framebuffer_rgb, "examples/smallsurfer.vcd", [
+    Message::AddVariables(vec![VariableRef::from_hierarchy_string("image_memory.height")]),
+    Message::CursorSet(BigInt::from(0)),
+    Message::SetFrameBufferArray(ScopeRef::from_hierarchy_string("image_memory.mem")),
+    Message::SetFrameBufferMode(crate::frame_buffer::FrameBufferColorMode::Rgb, 8, 8, 8),
+    Message::SetFrameBufferWidth(48),
+]}
+
+snapshot_ui_with_file_and_msgs! {framebuffer_ycbcr, "examples/smallsurfer.vcd", [
+    Message::AddVariables(vec![VariableRef::from_hierarchy_string("image_memory.height")]),
+    Message::CursorSet(BigInt::from(0)),
+    Message::SetFrameBufferArray(ScopeRef::from_hierarchy_string("image_memory.mem")),
+    Message::SetFrameBufferMode(crate::frame_buffer::FrameBufferColorMode::YCbCr, 8, 8, 8),
+    Message::SetFrameBufferWidth(48),
+]}
+
 snapshot_ui!(regex_error_indication, || {
     let mut state = SystemState::new_default_config()
         .unwrap()

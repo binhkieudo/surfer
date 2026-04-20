@@ -16,8 +16,9 @@ pub(crate) struct FrameBufferSettings {
     pub color_settings: PixelColorSettings,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FrameBufferColorMode {
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameBufferColorMode {
+    #[default]
     Grayscale,
     Rgb,
     YCbCr,
@@ -50,12 +51,6 @@ fn default_cb_bits() -> u8 {
 
 fn default_cr_bits() -> u8 {
     8
-}
-
-impl Default for FrameBufferColorMode {
-    fn default() -> Self {
-        Self::Grayscale
-    }
 }
 
 impl Default for PixelColorSettings {
