@@ -13,13 +13,21 @@ use surfer_translation_types::translator::VariableNameInfo;
 use std::rc::Rc;
 
 use crate::{
-    CachedDrawData, CanvasState, Channels, WcpClientCapabilities, annotation_list::AnnotationList, command_prompt, comment::Comment, displayed_item::DisplayedItemRef, frame_buffer::{FrameBufferArrayCache, FrameBufferContent, FrameBufferPixelCache}, hierarchy::{AllVariableCacheKey, ScopeExpandType, VariableListRow}, message::Message, state::UserState, time::TimeInputState, translation::{TranslatorList, all_translators}, wave_container::VariableRef, wave_source::{LoadOptions, LoadProgress}
+    CachedDrawData, CanvasState, Channels, WcpClientCapabilities, command_prompt,
+    displayed_item::DisplayedItemRef,
+    frame_buffer::{FrameBufferArrayCache, FrameBufferContent, FrameBufferPixelCache},
+    hierarchy::{AllVariableCacheKey, ScopeExpandType, VariableListRow},
+    message::Message,
+    mousegestures::AnnotationKind,
+    state::UserState,
+    time::TimeInputState,
+    translation::{TranslatorList, all_translators},
+    wave_container::VariableRef,
+    wave_source::{LoadOptions, LoadProgress},
 };
 
 #[cfg(feature = "performance_plot")]
 use crate::benchmark::Timing;
-
-use crate::rectangle;
 
 pub struct SystemState {
     pub user: UserState,
@@ -72,6 +80,8 @@ pub struct SystemState {
 
     pub(crate) measure_start_location: Option<Pos2>,
 
+    pub(crate) annotation_kind: Option<AnnotationKind>,
+
     // Egui requires a place to store text field content between frames
     pub(crate) url: RefCell<String>,
     pub(crate) command_prompt_text: RefCell<String>,
@@ -112,12 +122,7 @@ pub struct SystemState {
     // Only used for testing
     pub(crate) expand_parameter_section: bool,
 
-    pub(crate) add_rectangle: bool,
-    pub(crate) comments: Vec<Comment>,
     pub(crate) annotation_id_source: u64,
-    pub(crate) add_arrow: bool,
-    pub(crate) add_double_headed_arrow: bool,
-    pub(crate) add_simple_arrow: bool,
     pub(crate) click_handled: bool,
 }
 
@@ -152,6 +157,7 @@ impl SystemState {
             wcp_client_capabilities: WcpClientCapabilities::new(),
             gesture_start_location: None,
             gesture_start_time: None,
+
             measure_start_location: None,
             batch_messages: VecDeque::new(),
             batch_messages_completed: false,
@@ -184,12 +190,8 @@ impl SystemState {
             timing: RefCell::new(Timing::new()),
             undo_stack: vec![],
             redo_stack: vec![],
-            add_rectangle: false,
-            comments: Vec::new(),
+            annotation_kind: None,
             annotation_id_source: 0,
-            add_arrow: false,
-            add_simple_arrow: false,
-            add_double_headed_arrow: false,
             click_handled: false,
         };
 

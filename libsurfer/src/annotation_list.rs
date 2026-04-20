@@ -1,7 +1,5 @@
-use crate::{
-    Message, SystemState, annotation::Annotatable, annotation_list, graphics::GraphicsY, view::DrawingContext, viewport::Viewport, wave_data::WaveData
-};
-use egui::{Align, Color32, Context, Key, Layout, Ui};
+use crate::{Message, annotation::Annotatable, time::TimeFormatter, wave_data::WaveData};
+use egui::{Align, Color32, Key, Layout, Ui};
 use egui_remixicon::icons;
 
 #[derive(Clone)]
@@ -13,7 +11,10 @@ impl Default for AnnotationList {
     }
 }
 
-pub const DEFAULT_GROUP_NAME: &str = "Ungrouped";
+const DEFAULT_GROUP_NAME: &str = "Ungrouped";
+const TIME_FONT_SIZE: f32 = 11.;
+const DEFAULT_SPACE: f32 = 4.;
+const WIDTH_CONSTRAINT: f32 = 30.;
 
 impl AnnotationList {}
 
@@ -22,9 +23,9 @@ use std::collections::BTreeSet;
 impl WaveData {
     pub fn draw_annotation_list(
         &self,
-        ui: &mut egui::Ui,
-        waves: &WaveData,
+        ui: &mut Ui,
         msgs: &mut Vec<Message>,
+        time_formatter: &TimeFormatter,
     ) {
         ui.style_mut()
             .visuals
@@ -34,9 +35,9 @@ impl WaveData {
             .width = 0.5;
 
         ui.horizontal(|ui| {
-            ui.allocate_space(egui::vec2(ui.available_width() - 30.0, 0.0));
+            ui.allocate_space(egui::vec2(ui.available_width() - WIDTH_CONSTRAINT, 0.0));
             if ui.button(icons::CLOSE_LARGE_LINE).clicked() {
-                msgs.push(Message::SetAnnotationlistVisible());
+                msgs.push(Message::ToggleAnnotationlistVisibility());
             }
         });
 
@@ -45,49 +46,54 @@ impl WaveData {
             ui.label("Your annotations will be displayed here.");
         });
 
-        ui.add_space(8.0);
+        ui.add_space(DEFAULT_SPACE*2.);
         ui.separator();
 
-       
+        // --- Create Group UI (Using egui Temp Memory)
+        ui.label(egui::RichText::new("Manage Groups").small().strong());
+        ui.horizontal(|ui| {
+            let input_id = ui.make_persistent_id("group_input_buffer");
+            let mut buffer = ui.data_mut(|d| d.get_temp::<String>(input_id).unwrap_or_default());
 
-            // --- Create Group UI (Using egui Temp Memory) --- TEMPORATY FIX
-            ui.label(egui::RichText::new("Manage Groups").small().strong());
-            ui.horizontal(|ui| {
-                let input_id = ui.make_persistent_id("group_input_buffer");
-                let mut buffer =
-                    ui.data_mut(|d| d.get_temp::<String>(input_id).unwrap_or_default());
+            let text_edit_res = ui.add(
+                egui::TextEdit::singleline(&mut buffer)
+                    .hint_text("Type group name...")
+                    .desired_width(ui.available_width() - 160.0),
+            );
 
-                let text_edit_res = ui.add(
-                    egui::TextEdit::singleline(&mut buffer)
-                        .hint_text("Type group name...")
-                        .desired_width(ui.available_width() - 160.0),
-                );
+            // handle focusing of the text area when user clicks elsewhere, enables shortcuts.
+            let focus_id = ui.make_persistent_id("group_input_focus_init");
+            let has_focused = ui.data_mut(|d| d.get_temp::<bool>(focus_id).unwrap_or(false));
 
-                // handle focusing of the text area when user clicks elsewhere, enables shortcuts.
-                let focus_id = ui.make_persistent_id("group_input_focus_init");
-                let has_focused =
-                    ui.data_mut(|d| d.get_temp::<bool>(focus_id).unwrap_or(false));
+            if !has_focused {
+                text_edit_res.request_focus();
+                ui.data_mut(|d| d.insert_temp(focus_id, true));
+            }
 
-                if !has_focused {
+            ui.data_mut(|d| d.insert_temp(input_id, buffer.clone()));
+
+            // create group when user press enter
+            if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) {
+                if !buffer.is_empty() {
+                    msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
+                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
+                    // Keep focus here so users can type the next group immediately
                     text_edit_res.request_focus();
-                    ui.data_mut(|d| d.insert_temp(focus_id, true));
                 }
+            }
 
-                ui.data_mut(|d| d.insert_temp(input_id, buffer.clone()));
+            // create group when user press plus button
+            if ui
+                .button(icons::ADD_LINE)
+                .on_hover_text("Create Group")
+                .clicked()
+            {
+                if !buffer.is_empty() {
+                    msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
+                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
+                }
+            }
 
-                // create group when user press enter
-                if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) {
-                    if !buffer.is_empty() {
-                        //TODO: Code duplication, move to new func.
-                        let group_name = buffer.trim().to_string();
-                        if !waves.available_groups.contains(&group_name) {
-                            msgs.push(Message::CreateAnnotationGroup(group_name));
-                            ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                        }
-                        ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                        // Keep focus here so users can type the next group immediately
-                        text_edit_res.request_focus();
-                    }
             // delete group when user press plus button
             if ui
                 .button(icons::DELETE_BIN_LINE)
@@ -99,51 +105,46 @@ impl WaveData {
                     ui.data_mut(|d| d.insert_temp(input_id, String::new()));
                 }
             }
-        }});
+        });
 
-            ui.add_space(4.0);
-            ui.separator();
+        ui.add_space(DEFAULT_SPACE);
+        ui.separator();
 
-            // --- Scrollable List ---
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    let mut all_groups = BTreeSet::new();
-                    // for annotation in &waves.annotations {
-                    //     if let Some(ref g) = annotation.group_name() {
-                    //         all_groups.insert(g.clone());
-                    //     }
-                    // }
+        // --- Scrollable List ---
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                let mut all_groups = BTreeSet::new();
 
-                    // Include empty groups from the state's list
-                    for g in &self.available_groups {
-                        all_groups.insert(g.clone());
-                    }
+                // include empty groups from the state's list
+                for g in &self.annotation_groups {
+                    all_groups.insert(g.clone());
+                }
 
-                    for group_name in all_groups {
-                        self.render_group_section(
-                            ui,
-                            Some(group_name.to_string()),
-                            msgs,
-                            waves,
-                        );
-                    }
+                for group_name in all_groups {
+                    self.render_group_section(
+                        ui,
+                        Some(group_name.to_string()),
+                        msgs,
+                        time_formatter,
+                    );
+                }
 
-                    self.render_group_section(ui, None, msgs, waves);
-                });
-        }
+                self.render_group_section(ui, None, msgs, time_formatter);
+            });
+    }
 
     fn render_group_section(
         &self,
         ui: &mut Ui,
         group_filter: Option<String>,
         msgs: &mut Vec<Message>,
-        waves: &WaveData
+        time_formatter: &TimeFormatter,
     ) {
         let display_name = group_filter
             .clone()
             .unwrap_or_else(|| DEFAULT_GROUP_NAME.to_string());
-        let items: Vec<_> = waves
+        let items: Vec<_> = self
             .annotations
             .iter()
             .filter(|r| r.get_group_name() == group_filter)
@@ -153,7 +154,7 @@ impl WaveData {
             return;
         }
 
-        // Determine if the group is "mostly visible" or "mostly hidden" to pick the icon
+        // Determine if the group is has any visible annotations to pick the icon
         let any_visible = items.iter().any(|r| r.is_visible());
         let group_icon = if any_visible {
             icons::EYE_LINE
@@ -200,16 +201,10 @@ impl WaveData {
                     ui.weak("  No items");
                 }
 
-                for (annotation) in items {
+                for annotation in items {
                     let annotation_id = annotation.get_id();
                     ui.horizontal(|ui| {
                         ui.add_space(6.0);
-
-                        /* // show what type of annotering
-                        if ui.button(icons::DELETE_BIN_LINE).clicked() {
-
-                            }
-                        */
 
                         // Editable Name Logic
                         let editing_id = ui.make_persistent_id(("editing_name", annotation_id));
@@ -275,51 +270,55 @@ impl WaveData {
                             response.on_hover_text("Click to rename");
                         }
 
+                        let show_comment_icon = if annotation.show_comments() {
+                            icons::ARROW_DOWN_S_LINE
+                        } else {
+                            icons::ARROW_RIGHT_S_LINE
+                        };
+
+                        if ui
+                            .button(show_comment_icon)
+                            .on_hover_text("Show comments")
+                            .clicked()
+                        {
+                            msgs.push(Message::ToggleAnnotationListShowComments(annotation_id));
+                        }
+
                         // Group Selector
-                        let mut current_group = annotation.get_group_name();
+                        let current_group = annotation.get_group_name();
 
-                        // Assign a unique ID for this specific dropdown
-                        let combo_id = ui.make_persistent_id(("move_group", annotation_id));
+                        ui.menu_button(icons::FOLDER_TRANSFER_LINE, |ui| {
+                            if ui
+                                .selectable_label(current_group.is_none(), DEFAULT_GROUP_NAME)
+                                .clicked()
+                            {
+                                msgs.push(Message::UpdateAnnotationGroup(annotation_id, None));
+                                ui.close();
+                            }
 
-                        egui::ComboBox::from_id_salt(combo_id)
-                            .selected_text("") // Keep it slim
-                            .width(20.0) // Small width just for the arrow/icon
-                            .show_ui(ui, |ui| {
-                                // Option: Ungrouped
+                            for group in &self.annotation_groups {
                                 if ui
-                                    .selectable_value(
-                                        &mut current_group,
-                                        None,
-                                        format!("None ({})", DEFAULT_GROUP_NAME),
-                                    )
+                                    .selectable_label(current_group.as_ref() == Some(group), group)
                                     .clicked()
                                 {
-                                    msgs.push(Message::UpdateAnnotationGroup(annotation_id, None));
+                                    msgs.push(Message::UpdateAnnotationGroup(
+                                        annotation_id,
+                                        Some(group.clone()),
+                                    ));
+                                    ui.close();
                                 }
+                            }
+                        })
+                        .response
+                        .on_hover_text("Change Group");
 
-                                // Options: Existing groups
-                                for group in &self.available_groups {
-                                    if ui
-                                        .selectable_value(
-                                            &mut current_group,
-                                            Some(group.clone()),
-                                            group,
-                                        )
-                                        .clicked()
-                                    {
-                                        msgs.push(Message::UpdateAnnotationGroup(
-                                            annotation_id,
-                                            Some(group.clone()),
-                                        ));
-                                    }
-                                }
-                            })
-                            .response
-                            .on_hover_text("Change Group");
-
-                        // Buttons on the right
+                        // Buttons on the right of individual annotations
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button(icons::DELETE_BIN_LINE).clicked() {
+                            if ui
+                                .button(icons::DELETE_BIN_LINE)
+                                .on_hover_text("Delete annotation")
+                                .clicked()
+                            {
                                 msgs.push(Message::RemoveAnnotation(annotation_id));
                             }
 
@@ -328,11 +327,19 @@ impl WaveData {
                             } else {
                                 icons::EYE_LINE
                             };
-                            if ui.button(vis_icon).clicked() {
+                            if ui
+                                .button(vis_icon)
+                                .on_hover_text("Toggle visibility")
+                                .clicked()
+                            {
                                 msgs.push(Message::ToggleAnnotationVisiblility(annotation_id));
                             }
 
-                            if ui.button(icons::SEARCH_LINE).clicked() {
+                            if ui
+                                .button(icons::SEARCH_LINE)
+                                .on_hover_text("Go to annotation")
+                                .clicked()
+                            {
                                 msgs.push(Message::GoToAnnotationPosition(
                                     annotation_id,
                                     self.last_active_viewport_idx,
@@ -340,9 +347,52 @@ impl WaveData {
                             }
                         });
                     });
+
+                    ui.horizontal(|ui| {
+                        ui.add_space(16.0);
+                        ui.label(
+                            egui::RichText::new(annotation.get_time_info(time_formatter))
+                                .size(TIME_FONT_SIZE)
+                                .color(Color32::LIGHT_GRAY),
+                        )
+                    });
+
+                    // Show comments for this annotation
+                    if annotation.show_comments() {
+                        let messages = annotation.get_messages();
+                        for c in messages {
+                            let mut line_left = ui.cursor().left_top();
+                            line_left.x += 16.;
+                            ui.painter().add(egui::Shape::line_segment(
+                                [line_left, ui.cursor().right_top()],
+                                egui::Stroke::new(0.5, egui::Color32::WHITE),
+                            ));
+                            ui.horizontal(|ui| {
+                                ui.add_space(18.0); // Indent comments
+                                ui.vertical(|ui| {
+                                    ui.add_space(DEFAULT_SPACE / 2.);
+                                    ui.set_max_width(ui.available_width() - WIDTH_CONSTRAINT);
+                                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+
+                                    ui.add(egui::Label::new(c.text.as_str()).wrap());
+                                });
+
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    let response = ui.add_sized(
+                                        egui::Vec2::new(10.0, 10.0),
+                                        egui::Button::new(icons::DELETE_BIN_LINE),
+                                    );
+
+                                    if response.on_hover_text("Delete message").clicked() {
+                                        msgs.push(Message::RemoveCommentMessage(annotation.get_id(), c.id));
+                                    }
+                                });
+                            });
+                        }
+                    }
                 }
             });
         ui.separator();
-        ui.add_space(4.0);
+        ui.add_space(DEFAULT_SPACE);
     }
 }

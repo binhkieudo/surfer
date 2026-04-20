@@ -364,7 +364,7 @@ impl SystemState {
                             graphics: HashMap::new(),
                             cache_generation: 0,
                             inflight_caches: HashMap::new(),
-                            available_groups: vec![],
+                            annotation_groups: vec![],
                             annotation_list_visible: false,
                         },
                         None,
@@ -446,7 +446,7 @@ impl SystemState {
             graphics: HashMap::new(),
             cache_generation: 0,
             inflight_caches: HashMap::new(),
-            available_groups: vec![],
+            annotation_groups: vec![],
             annotation_list_visible: false,
         };
 
@@ -607,9 +607,9 @@ impl SystemState {
             displayed_items: waves.displayed_items.clone(),
             markers: waves.markers.clone(),
             annotations: waves.annotations.clone(),
-            annotation_group: waves.available_groups.clone(),
-            annotation_list: waves.annotation_list_visible.clone(),
-            selected_annotation: waves.selected_annotation.clone(),
+            annotation_group: waves.annotation_groups.clone(),
+            annotation_list: waves.annotation_list_visible,
+            selected_annotation: waves.selected_annotation,
             annotation_counter: waves.annotation_counter,
         }
     }

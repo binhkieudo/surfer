@@ -2,9 +2,9 @@
 
 pub mod analog_renderer;
 pub mod analog_signal_cache;
-pub mod arrow;
 pub mod annotation;
 pub mod annotation_list;
+pub mod arrow;
 pub mod async_util;
 pub mod batch_commands;
 #[cfg(feature = "performance_plot")]
@@ -74,9 +74,7 @@ pub mod wellen;
 use crate::annotation::Annotatable;
 use crate::annotation::Annotation;
 use crate::arrow::ArrowAnnotation;
-use crate::arrow::ArrowHeadMode;
-use crate::channels::checked_send;
-use crate::comment::Comment;
+use crate::comment::CommentMessage;
 use crate::config::AutoLoad;
 use crate::displayed_item_tree::ItemIndex;
 use crate::displayed_item_tree::TargetPosition;
@@ -89,6 +87,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, LazyLock, RwLock};
 
+use crate::channels::checked_send;
 use batch_commands::read_command_bytes;
 use batch_commands::read_command_file;
 #[cfg(target_arch = "wasm32")]
@@ -97,10 +96,7 @@ use derive_more::Display;
 use displayed_item::DisplayedVariable;
 use displayed_item_tree::DisplayedItemTree;
 use eframe::{App, CreationContext};
-use egui::Color32;
 use egui::Id;
-use egui::Pos2;
-use egui::Rect;
 use egui::{FontData, FontDefinitions, FontFamily};
 use eyre::{Result, WrapErr as _};
 use ftr_parser::types::Transaction;
@@ -1908,7 +1904,7 @@ impl SystemState {
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
                         waves.annotations = prev_state.annotations;
-                        waves.available_groups = prev_state.annotation_group;
+                        waves.annotation_groups = prev_state.annotation_group;
                         waves.annotation_list_visible = prev_state.annotation_list;
                         waves.selected_annotation = prev_state.selected_annotation;
                         waves.annotation_counter = prev_state.annotation_counter;
@@ -1930,7 +1926,7 @@ impl SystemState {
                         waves.displayed_items = prev_state.displayed_items;
                         waves.markers = prev_state.markers;
                         waves.annotations = prev_state.annotations;
-                        waves.available_groups = prev_state.annotation_group;
+                        waves.annotation_groups = prev_state.annotation_group;
                         waves.annotation_list_visible = prev_state.annotation_list;
                         waves.selected_annotation = prev_state.selected_annotation;
                         waves.annotation_counter = prev_state.annotation_counter;
@@ -2058,7 +2054,6 @@ impl SystemState {
                 } else {
                     String::new()
                 });
-                // TODO add group name? would have to break the pattern that we insert an
                 // undo message even if no waves are available
                 self.save_current_canvas(undo_msg);
                 self.invalidate_draw_commands();
@@ -2282,17 +2277,8 @@ impl SystemState {
             Message::ExpandDrawnItem { item, levels } => {
                 self.items_to_expand.borrow_mut().push((item, levels));
             }
-            Message::AddRectangle => {
-                // disable arrow maker
-                self.add_arrow = false;
-                self.add_simple_arrow = false;
-                self.add_double_headed_arrow = false;
-
-                if self.add_rectangle {
-                    self.add_rectangle = false;
-                } else {
-                    self.add_rectangle = true;
-                }
+            Message::SetMouseGestureAnnotation(annotation_kind) => {
+                self.annotation_kind = annotation_kind;
             }
             Message::RectangleAdded {
                 time_at_start,
@@ -2314,21 +2300,6 @@ impl SystemState {
                     rect,
                     waves.annotation_counter,
                 )));
-                self.add_rectangle = false;
-            }
-            Message::AddArrow { head_mode } => {
-                self.add_rectangle = false; // turn off rectangle maker
-                self.add_arrow = !self.add_arrow;
-                match head_mode {
-                    ArrowHeadMode::End => {
-                        self.add_simple_arrow = true;
-                        self.add_double_headed_arrow = false;
-                    }
-                    ArrowHeadMode::Double => {
-                        self.add_simple_arrow = false;
-                        self.add_double_headed_arrow = true;
-                    }
-                }
             }
             Message::ArrowAdded {
                 wave_point_from,
@@ -2339,20 +2310,6 @@ impl SystemState {
                 self.save_current_canvas(format!("Add arrow {:?}", id));
                 let waves = self.user.waves.as_mut()?;
                 waves.annotation_counter += 1;
-
-                match head_mode.clone() {
-                    ArrowHeadMode::End => {
-                        self.add_arrow = false;
-                        self.add_simple_arrow = false;
-                        self.add_double_headed_arrow = false;
-                    }
-                    ArrowHeadMode::Double => {
-                        self.add_arrow = false;
-                        self.add_double_headed_arrow = false;
-                        self.add_simple_arrow = false;
-                    }
-                }
-
                 waves
                     .annotations
                     .push(Annotation::Arrow(ArrowAnnotation::new(
@@ -2378,6 +2335,13 @@ impl SystemState {
                 }
             }
 
+            Message::ToggleAnnotationListShowComments(anno_id) => {
+                let waves = self.user.waves.as_mut()?;
+                if let Some(target) = waves.annotations.iter_mut().find(|a| a.get_id() == anno_id) {
+                    target.set_show_comments(!target.show_comments());
+                }
+            }
+
             Message::GoToAnnotationPosition(anno_id, viewport_idx) => {
                 let mut center = BigInt::ZERO;
                 let waves = self.user.waves.as_mut()?;
@@ -2386,7 +2350,7 @@ impl SystemState {
                     if let Some(target) =
                         waves.annotations.iter_mut().find(|a| a.get_id() == anno_id)
                     {
-                        center = target.get_time_at_start();
+                        center = target.get_center_time();
                     };
 
                     waves.viewports[viewport_idx].go_to_time(&center, &num_timestamps);
@@ -2398,21 +2362,16 @@ impl SystemState {
                 }
             }
 
-            Message::SetAnnotationlistVisible() => {
+            Message::ToggleAnnotationlistVisibility() => {
                 let waves = self.user.waves.as_mut()?;
                 waves.annotation_list_visible = !waves.annotation_list_visible;
                 self.user.show_annotation_list = waves.annotation_list_visible
             }
 
-            Message::ShowAnnotationlist => {
-
-                //self.annotation_list.show(ui, &mut self.annotation_list_activated);
-            }
-
             Message::CreateAnnotationGroup(name) => {
                 self.save_current_canvas(format!("Added annotation group {name}"));
                 let waves = self.user.waves.as_mut()?;
-                waves.available_groups.push(name);
+                waves.annotation_groups.push(name);
             }
 
             Message::DeleteAnnotationGroup(name) => {
@@ -2423,7 +2382,7 @@ impl SystemState {
                         annotation.set_group_name(None);
                     }
                 }
-                waves.available_groups.retain(|x| x != &name);
+                waves.annotation_groups.retain(|x| x != &name);
             }
 
             Message::DeleteAllAnnotationInGroup(name) => {
@@ -2434,7 +2393,7 @@ impl SystemState {
                 waves
                     .annotations
                     .retain(|annotation| annotation.get_group_name().as_ref() != Some(&name));
-                waves.available_groups.retain(|x| x != &name);
+                waves.annotation_groups.retain(|x| x != &name);
             }
 
             Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
@@ -2493,47 +2452,67 @@ impl SystemState {
                     }
                 }
             }
-            Message::AddComment {
-                time_anchor,
-                y_anchor,
-                annotation_id,
-            } => {
-                let mut comment = comment::Comment {
-                    id: egui::Id::new(("comment", self.annotation_id_source)),
-                    annotation_id: annotation_id,
-                    rect: egui::Rect::ZERO,
-                    color: egui::Color32::WHITE,
-                    x_offset: 0.0,
-                    y_offset: 0.0,
-                    time_anchor: time_anchor,
-                    x_anchor: 0.0,
-                    y_anchor: y_anchor,
-                    x_size: 100.0,
-                    y_size: 50.0,
-                    message_chain: Vec::new(),
-                    new_text: String::from(""),
-                    name: "".to_string(),
-                };
 
-                // let waves = self.user.waves.as_mut()?;
-                // for annotation in waves.annotations.iter_mut() {
-                //     if annotation.get_id() == comment.annotation_id {
-                //         comment.time_anchor = annotation.get_time_at_end();
+            Message::RemoveCommentMessage(annotation_id, message_id) => {
+                //self.save_current_canvas(format!("Removed message"));
+                let waves = self.user.waves.as_mut()?;
+                if let Some(target) = waves
+                    .annotations
+                    .iter_mut()
+                    .find(|a| a.get_id() == annotation_id)
+                {
+                    println!("gets here");
+                    target.get_comment_box_mut().message_chain
+                            .retain(|comment_message| comment_message.id != message_id);
 
-                //         comment.y_anchor = annotation.get_lowest_y_pos(waves);
-                //     }
-                // }
+                }
 
-                self.comments.push(comment);
-
-                self.annotation_id_source += 1;
             }
 
             Message::ClickHandled() => {
                 self.click_handled = true;
             }
+            Message::UpdateCommentBox(changes) => {
+                let waves = self.user.waves.as_mut()?;
+                for (annotation_id, comment) in changes {
+                    if let Some(target) = waves
+                        .annotations
+                        .iter_mut()
+                        .find(|a| a.get_id() == annotation_id)
+                    {
+                        target.update_comment_box(comment);
+                    }
+                }
+            }
+            Message::AddCommentMessage(annotation_id, message, user) => {
+                //self.save_current_canvas(format!("Added message"));
+                let waves = self.user.waves.as_mut()?;
+                if let Some(target) = waves
+                    .annotations
+                    .iter_mut()
+                    .find(|a| a.get_id() == annotation_id)
+                {
+                    let comment = target.get_comment_box_mut();
+                    comment.message_chain.push(CommentMessage {
+                        id: egui::Id::new(("comment", comment.message_id_source)),
+                        user: user,
+                        text: message,
+                    });
+                    comment.message_id_source += 1;
+                }
+            }
+            Message::ToggleCommentVisibility(annotation_id) => {
+                let waves = self.user.waves.as_mut()?;
+                if let Some(target) = waves
+                    .annotations
+                    .iter_mut()
+                    .find(|a| a.get_id() == annotation_id)
+                {
+                    target.get_comment_box_mut().visible = !target.get_comment_box().visible;
+                }
+            }
         }
-        
+
         Some(())
     }
 

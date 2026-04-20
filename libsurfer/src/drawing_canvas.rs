@@ -25,6 +25,7 @@ use crate::data_container::DataContainer;
 use crate::displayed_item::{
     AnalogSettings, DisplayedFieldRef, DisplayedItemRef, DisplayedVariable,
 };
+use crate::time::TimeFormatter;
 use crate::tooltips::handle_transaction_tooltip;
 use crate::transaction_container::{TransactionRef, TransactionStreamRef};
 use crate::translation::{TranslationResultExt, TranslatorList, ValueKindExt, VariableInfoExt};
@@ -696,22 +697,16 @@ impl SystemState {
             })
     }
 
-    //Calculate the offset for annotations.
-    //TODO: uses gap as default, maybe combine.
-    fn annotation_offset(&self, ui: &Ui) -> f32 {
-        let mut offset = ui.spacing().item_spacing.y * 0.5;
+    //Calculate the offset for annotations on the canvas.
+    pub fn get_annotation_offset(&self, default_timeline_height: f32) -> f32 {
+        let mut offset = 0.;
         if self.show_default_timeline() {
-            offset += ui.text_style_height(&egui::TextStyle::Body);
+            offset += default_timeline_height + self.user.config.layout.waveforms_gap * 4.;
         }
         offset
     }
 
-    pub fn draw_items(
-        &mut self,
-        ui: &mut Ui,
-        msgs: &mut Vec<Message>,
-        viewport_idx: usize,
-    ) {
+    pub fn draw_items(&mut self, ui: &mut Ui, msgs: &mut Vec<Message>, viewport_idx: usize) {
         let Some(waves) = &self.user.waves else {
             return;
         };
@@ -832,35 +827,27 @@ impl SystemState {
         {
             msgs.push(Message::SetMouseGestureDragStart(
                 ui.input(|i| i.pointer.press_origin())
-                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)), None
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
+                None,
             ));
         }
-        let annotation_offset = self.annotation_offset(ui);
+        let annotation_offset = self.get_annotation_offset(default_timeline_height);
 
-        if self.add_rectangle && response.drag_started_by(PointerButton::Primary)
-            || self.add_arrow && response.drag_started_by(PointerButton::Primary)
-        {
-            let start = ui.input(|i| i.pointer.press_origin())
-                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false));
+        if !self.annotation_kind.is_none() && response.drag_started_by(PointerButton::Primary) {
+            let start = ui
+                .input(|i| i.pointer.press_origin())
+                .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false));
             let time = waves.viewports[viewport_idx].as_time_bigint(
-                    start.unwrap().x,
-                    frame_width,
-                    &num_timestamps,
-                );
+                start.unwrap().x,
+                frame_width,
+                &num_timestamps,
+            );
             msgs.push(Message::SetMouseGestureDragStart(
                 ui.input(|i| i.pointer.press_origin())
-                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),Some(time)
+                    .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false)),
+                Some(time),
             ));
         }
-
-        // if self.add_arrow && response.drag_started_by(PointerButton::Primary) {
-        //     println!("gesture starting");
-        //     println!("{}", self.add_arrow);
-        //     msgs.push(Message::SetMouseGestureDragStart(
-        //         ui.input(|i| i.pointer.press_origin())
-        //             .map(|p| self.transform_pos(to_screen, p, ui, false)),
-        //     ));
-        // }
 
         // Check for measure drag starting
         if response.drag_started_by(PointerButton::Primary) && self.do_measure(&modifiers) {
@@ -916,6 +903,21 @@ impl SystemState {
         let viewport = &waves.viewports[viewport_idx];
         waves.draw_graphics(&mut ctx, viewport, &self.user.config.theme);
 
+        //Draw cursor and allow measure if no annotation is currently being drawn
+        if self.annotation_kind.is_none() {
+            waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
+
+            self.draw_measure_widget(
+                ui,
+                waves,
+                pointer_pos_mouse_gesture,
+                &response,
+                msgs,
+                &mut ctx,
+                viewport_idx,
+            );
+        }
+
         waves.draw_markers(
             &self.user.config.theme,
             &mut ctx,
@@ -940,32 +942,22 @@ impl SystemState {
             self.draw_default_timeline(waves, &ctx, viewport_idx);
         }
 
-        //TODO: properly turn of measuretool when making annotation. Temporarily just checking add_rectangle flag to turn it off.
-        //As of now cursor disappears altogether when drawing rectangles, which is not desired.
-        if !self.add_rectangle && !self.add_arrow {
-            waves.draw_cursor(&self.user.config.theme, &mut ctx, viewport);
-
-            self.draw_measure_widget(
-                ui,
-                waves,
-                pointer_pos_mouse_gesture,
-                &response,
-                msgs,
-                &mut ctx,
-                viewport_idx,
-            );
-        }
+        let time_formatter = TimeFormatter::new(
+            &waves.inner.metadata().timescale,
+            &self.user.wanted_timeunit,
+            &self.get_time_format(),
+        );
 
         self.draw_mouse_gesture_widget(
-                ui,
-                waves,
-                pointer_pos_mouse_gesture,
-                &response,
-                msgs,
-                &mut ctx,
-                viewport_idx,
-                annotation_offset,
-            );
+            ui,
+            waves,
+            pointer_pos_mouse_gesture,
+            &response,
+            msgs,
+            &mut ctx,
+            viewport_idx,
+            annotation_offset,
+        );
 
         waves.draw_annotations(
             ui,
@@ -977,22 +969,10 @@ impl SystemState {
             annotation_offset,
             response.rect,
             to_screen,
-            frame_size,
+            &time_formatter,
         );
-        
+
         self.handle_canvas_context_menu(&response, waves, to_screen, &mut ctx, msgs, viewport_idx);
-
-        let mut temp_comments = self.comments.clone();
-
-        waves.draw_comments(
-            ui,
-            &waves.viewports[viewport_idx],
-            &mut ctx,
-            &mut temp_comments,
-            annotation_offset,
-        );
-
-        self.comments = temp_comments;
     }
 
     fn draw_wave_data(

@@ -55,11 +55,49 @@ pub struct GestureZones {
     northwest: GestureKind,
 }
 
+// The supported annotations.
+#[derive(Clone, PartialEq, Copy, Display, Debug, Deserialize)]
+pub enum AnnotationKind {
+    Rectangle,
+    ArrowSingleHead,
+    ArrowDoubleHead,
+}
+
 impl SystemState {
-    fn clamp_y(&self, pos: Pos2, max_y: f32) -> Pos2 {
+    //Adjusts y_value to not go without scope and whether it should snap to waves or not.
+    fn clamp_y(
+        &self,
+        pos: Pos2,
+        max_y: f32,
+        snap_y: bool,
+        waves: &WaveData,
+        ctx: &mut DrawingContext<'_>,
+        anchor: Anchor,
+        y_offset: f32,
+    ) -> Pos2 {
+        let mut y = pos.y.clamp(waves.get_content_start(ctx), max_y);
+        if snap_y {
+            let local_y = y - y_offset;
+
+            if let Some(snapped_y) = waves
+                .get_item_at_y(local_y)
+                .and_then(|vidx| waves.items_tree.get_visible(vidx))
+                .and_then(|node| {
+                    let gy = GraphicsY {
+                        item: node.item_ref,
+                        anchor,
+                    };
+
+                    waves.get_item_y(&gy)
+                })
+            {
+                y = snapped_y + y_offset;
+            }
+        }
+
         Pos2 {
             x: pos.x,
-            y: pos.y.min(max_y),
+            y: y.min(max_y),
         }
     }
 
@@ -77,23 +115,31 @@ impl SystemState {
         y_offset: f32,
     ) {
         if let Some(mut start_location) = self.gesture_start_location {
-            if self.add_rectangle && start_location.y > waves.get_content_height(y_offset) {
+            if self.annotation_kind == Some(AnnotationKind::Rectangle)
+                && start_location.y
+                    > (waves.get_content_height(ctx) + self.user.config.layout.waveforms_gap)
+            {
                 return;
             }
-            if let Some(time) = &self.gesture_start_time{
-                let x_pixel = waves.viewports[viewport_idx].pixel_from_time(&time, ctx.cfg.canvas_size.x, &waves.safe_num_timestamps());
+            //Attach position to canvas, so it doesn't follow screen movement.
+            if let Some(time) = &self.gesture_start_time {
+                let x_pixel = waves.viewports[viewport_idx].pixel_from_time(
+                    &time,
+                    ctx.cfg.canvas_size.x,
+                    &waves.safe_num_timestamps(),
+                );
                 start_location.x = x_pixel;
             }
             let modifiers = egui_ctx.input(|i| i.modifiers);
             if response.dragged_by(PointerButton::Middle)
                 || modifiers.command && response.dragged_by(PointerButton::Primary)
-                || self.add_rectangle && response.dragged_by(PointerButton::Primary)
-                || self.add_arrow && response.dragged_by(PointerButton::Primary)
+                || !self.annotation_kind.is_none() && response.dragged_by(PointerButton::Primary)
             {
                 self.start_dragging(
                     pointer_pos_canvas,
                     start_location,
                     ctx,
+                    egui_ctx,
                     response,
                     waves,
                     viewport_idx,
@@ -103,8 +149,8 @@ impl SystemState {
 
             if response.drag_stopped_by(PointerButton::Middle)
                 || modifiers.command && response.drag_stopped_by(PointerButton::Primary)
-                || self.add_rectangle && response.drag_stopped_by(PointerButton::Primary)
-                || self.add_arrow && response.drag_stopped_by(PointerButton::Primary)
+                || !self.annotation_kind.is_none()
+                    && response.drag_stopped_by(PointerButton::Primary)
             {
                 let frame_width = response.rect.width();
                 self.stop_dragging(
@@ -115,6 +161,7 @@ impl SystemState {
                     waves,
                     frame_width,
                     ctx,
+                    egui_ctx,
                     y_offset,
                 );
             }
@@ -130,6 +177,7 @@ impl SystemState {
         waves: &WaveData,
         frame_width: f32,
         ctx: &mut DrawingContext<'_>,
+        ui: &Context,
         y_offset: f32,
     ) {
         let num_timestamps = waves.safe_num_timestamps();
@@ -138,161 +186,59 @@ impl SystemState {
         };
         let distance = end_location - start_location;
         if distance.length_sq() >= self.user.config.gesture.deadzone {
-            if self.add_rectangle == true {
-                let end_location = self.clamp_y(end_location, waves.get_content_height(y_offset));
-                let temp_rect = emath::Rect::from_two_pos(start_location, end_location);
-
-                let first_time = waves.viewports[viewport_idx].as_time_bigint(
-                    start_location.x,
-                    frame_width,
-                    &num_timestamps,
-                );
-
-                let second_time = waves.viewports[viewport_idx].as_time_bigint(
-                    end_location.x,
-                    frame_width,
-                    &num_timestamps,
-                );
-
-                let wave_from: Option<GraphicsY> = if let Some(vidx_from) =
-                    waves.get_item_at_y(start_location.y - y_offset)
-                    && let Some(node) = waves.items_tree.get_visible(vidx_from)
-                {
-                    let from_item_ref = node.item_ref;
-                    let p = waves.get_item_y_scale(from_item_ref, start_location.y - y_offset);
-                    println!("p value: {:?}", Some(p));
-                    Some(GraphicsY {
-                        item: from_item_ref,
-                        anchor: Anchor::Percentual,
-                        p: p,
-                    })
-                } else {
-                    None
-                };
-                let wave_to = if let Some(vidx_to) = waves.get_item_at_y(end_location.y - y_offset)
-                    && let Some(node) = waves.items_tree.get_visible(vidx_to)
-                {
-                    let from_item_ref = node.item_ref;
-                    let p = waves.get_item_y_scale(from_item_ref, end_location.y - y_offset);
-
-                    Some(GraphicsY {
-                        item: from_item_ref,
-                        anchor: Anchor::Percentual,
-                        p: p,
-                    })
-                } else {
-                    None
-                };
-                msgs.push(Message::RectangleAdded {
-                    time_at_start: first_time.clone().min(second_time.clone()),
-                    time_at_end: first_time.max(second_time),
-                    wave_from: wave_from,
-                    wave_to: wave_to,
-                    rect: temp_rect,
-                });
-            } else if self.add_arrow == true {
-                let start_pos = (ctx.to_screen)(start_location.x, start_location.y);
-                let end_pos = (ctx.to_screen)(end_location.x, end_location.y);
-                println!("end_pos_y: {}", end_pos.y);
-
-                //fix offset, difference between wave data with timeline, pointer_pos_canvas and pointer_pos_mouse_gesture.
-                let mut offset = 0.0;
-                if self.show_default_timeline() {
-                    offset = 20.0;
+            match self.annotation_kind {
+                Some(AnnotationKind::Rectangle) => {
+                    self.create_rectangle(end_location, start_location, msgs, viewport_idx, waves, &num_timestamps, frame_width, ctx, ui, y_offset);
                 }
-
-                let time_from: BigInt = waves.viewports[viewport_idx].as_time_bigint(
-                    start_location.x,
-                    frame_width,
-                    &num_timestamps,
-                );
-
-                let snap_pos = Some(Pos2::new(end_location.x, end_location.y - offset));
-
-                let time_to: BigInt = self
-                    .snap_to_edge(snap_pos, waves, frame_width, viewport_idx)
-                    .unwrap_or_else(|| {
-                        waves.viewports[viewport_idx].as_time_bigint(
-                            end_location.x,
-                            frame_width,
-                            &num_timestamps,
-                        )
-                    });
-
-                let attached_item_to = waves.item_ref_at_canvas_y(end_location.y - offset);
-                let attached_item_from = waves.item_ref_at_canvas_y(start_location.y - offset);
-
-                let mut head_mode = ArrowHeadMode::End;
-
-                if self.add_double_headed_arrow == true {
-                    head_mode = ArrowHeadMode::Double;
-                };
-
-                println!("Mode: {:?}", head_mode);
-
-                let wave_point_from = WavePoint {
-                    time: time_from.clone(),
-                    attached_item: attached_item_from,
-                    screen_pos: start_pos,
-                };
-
-                let wave_point_to = WavePoint {
-                    time: time_to.clone(),
-                    attached_item: attached_item_to,
-                    screen_pos: end_pos,
-                };
-
-                if attached_item_to.is_some() {
-                    msgs.push(Message::ArrowAdded {
-                        wave_point_from,
-                        wave_point_to,
-                        head_mode,
-                    });
-                };
-            } else {
-                match gesture_type(self.user.config.gesture.mapping, distance) {
-                    GestureKind::ZoomToFit => {
-                        msgs.push(Message::ZoomToFit { viewport_idx });
+                Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
+                    self.create_arrow(end_location, start_location, msgs, viewport_idx, waves, &num_timestamps, frame_width, ctx, y_offset);
+                }
+                _ => {
+                    match gesture_type(self.user.config.gesture.mapping, distance) {
+                        GestureKind::ZoomToFit => {
+                            msgs.push(Message::ZoomToFit { viewport_idx });
+                        }
+                        GestureKind::ZoomIn => {
+                            let (min_x, max_x) = if end_location.x < start_location.x {
+                                (end_location.x, start_location.x)
+                            } else {
+                                (start_location.x, end_location.x)
+                            };
+                            msgs.push(Message::ZoomToRange {
+                                // FIXME: No need to go via bigint here, this could all be relative
+                                start: waves.viewports[viewport_idx].as_time_bigint(
+                                    min_x,
+                                    frame_width,
+                                    &num_timestamps,
+                                ),
+                                end: waves.viewports[viewport_idx].as_time_bigint(
+                                    max_x,
+                                    frame_width,
+                                    &num_timestamps,
+                                ),
+                                viewport_idx,
+                            });
+                        }
+                        GestureKind::GoToStart => {
+                            msgs.push(Message::GoToStart { viewport_idx });
+                        }
+                        GestureKind::GoToEnd => {
+                            msgs.push(Message::GoToEnd { viewport_idx });
+                        }
+                        GestureKind::ZoomOut => {
+                            msgs.push(Message::CanvasZoom {
+                                mouse_ptr: None,
+                                delta: 2.0,
+                                viewport_idx,
+                            });
+                        }
+                        GestureKind::Cancel => {}
                     }
-                    GestureKind::ZoomIn => {
-                        let (min_x, max_x) = if end_location.x < start_location.x {
-                            (end_location.x, start_location.x)
-                        } else {
-                            (start_location.x, end_location.x)
-                        };
-                        msgs.push(Message::ZoomToRange {
-                            // FIXME: No need to go via bigint here, this could all be relative
-                            start: waves.viewports[viewport_idx].as_time_bigint(
-                                min_x,
-                                frame_width,
-                                &num_timestamps,
-                            ),
-                            end: waves.viewports[viewport_idx].as_time_bigint(
-                                max_x,
-                                frame_width,
-                                &num_timestamps,
-                            ),
-                            viewport_idx,
-                        });
-                    }
-                    GestureKind::GoToStart => {
-                        msgs.push(Message::GoToStart { viewport_idx });
-                    }
-                    GestureKind::GoToEnd => {
-                        msgs.push(Message::GoToEnd { viewport_idx });
-                    }
-                    GestureKind::ZoomOut => {
-                        msgs.push(Message::CanvasZoom {
-                            mouse_ptr: None,
-                            delta: 2.0,
-                            viewport_idx,
-                        });
-                    }
-                    GestureKind::Cancel => {}
                 }
             }
         }
         msgs.push(Message::SetMouseGestureDragStart(None, None));
+        msgs.push(Message::SetMouseGestureAnnotation(None));
     }
 
     fn start_dragging(
@@ -300,6 +246,7 @@ impl SystemState {
         pointer_pos_canvas: Option<Pos2>,
         start_location: Pos2,
         ctx: &mut DrawingContext<'_>,
+        ui: &Context,
         response: &Response,
         waves: &WaveData,
         viewport_idx: usize,
@@ -310,14 +257,14 @@ impl SystemState {
         };
         let distance = current_location - start_location;
         if distance.length_sq() >= self.user.config.gesture.deadzone {
-            if self.add_rectangle == true {
-                let current_location =
-                    self.clamp_y(current_location, waves.get_content_height(y_offset));
-                self.draw_gesture_rectangle(start_location, current_location, ctx);
-            } else if self.add_arrow == true {
-                self.draw_arrow_line(start_location, current_location, "Add arrow", true, ctx);
-            } else {
-                match gesture_type(self.user.config.gesture.mapping, distance) {
+            match self.annotation_kind {
+                Some(AnnotationKind::Rectangle) => {
+                    self.draw_gesture_rectangle(start_location, waves, ui, current_location, ctx, y_offset);
+                }
+                Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
+                    self.draw_arrow_line(start_location, current_location, "Add arrow", true, ctx);
+                }
+                _ => match gesture_type(self.user.config.gesture.mapping, distance) {
                     GestureKind::ZoomToFit => self.draw_gesture_line(
                         start_location,
                         current_location,
@@ -369,20 +316,56 @@ impl SystemState {
                             ctx,
                         );
                     }
-                }
+                },
             }
         } else {
-            draw_gesture_help(
-                &self.user.config,
-                response,
-                ctx.painter,
-                Some(start_location),
-                true,
-            );
+            if self.annotation_kind.is_none() {
+                draw_gesture_help(
+                    &self.user.config,
+                    response,
+                    ctx.painter,
+                    Some(start_location),
+                    true,
+                );
+            }
         }
     }
 
-    fn draw_gesture_rectangle(&self, start: Pos2, end: Pos2, ctx: &mut DrawingContext) {
+    fn draw_gesture_rectangle(&self, start_location: Pos2, waves: &WaveData, ui: &Context, current_location: Pos2, ctx: &mut DrawingContext, y_offset: f32) {
+        let modifiers = ui.input(|i| i.modifiers);
+        let max_y = waves.get_content_height(ctx);
+        let current_anchor = {
+            if current_location.y > start_location.y {
+                Anchor::Bottom
+            } else {
+                Anchor::Top
+            }
+        };
+        let start_anchor = {
+            if start_location.y < current_location.y {
+                Anchor::Top
+            } else {
+                Anchor::Bottom
+            }
+        };
+        let end = self.clamp_y(
+            current_location,
+            max_y,
+            !modifiers.shift,
+            waves,
+            ctx,
+            current_anchor,
+            y_offset,
+        );
+        let start = self.clamp_y(
+            start_location,
+            max_y,
+            !modifiers.shift,
+            waves,
+            ctx,
+            start_anchor,
+            y_offset,
+        );
         let color = self.user.config.theme.annotation_rectangle.color;
         let stroke = Stroke {
             color,
@@ -396,6 +379,180 @@ impl SystemState {
 
         ctx.painter
             .rect_stroke(temp_rect, 0.0, stroke, egui::StrokeKind::Middle);
+    }
+
+    fn create_rectangle(&self,
+        end_location: Pos2,
+        start_location: Pos2,
+        msgs: &mut Vec<Message>,
+        viewport_idx: usize,
+        waves: &WaveData,
+        num_timestamps: &BigInt,
+        frame_width: f32,
+        ctx: &mut DrawingContext<'_>,
+        ui: &Context,
+        y_offset: f32,){
+        let modifiers = ui.input(|i| i.modifiers);
+        let max_y = waves.get_content_height(ctx);
+
+        let end_anchor = if end_location.y > start_location.y {
+            Anchor::Bottom
+        } else {
+            Anchor::Top
+        };
+
+        let start_anchor = if start_location.y < end_location.y {
+            Anchor::Top
+        } else {
+            Anchor::Bottom
+        };
+
+        let end = self.clamp_y(
+            end_location,
+            max_y,
+            !modifiers.shift,
+            waves,
+            ctx,
+            end_anchor,
+            y_offset,
+        );
+
+        let start = self.clamp_y(
+            start_location,
+            max_y,
+            !modifiers.shift,
+            waves,
+            ctx,
+            start_anchor,
+            y_offset,
+        );
+
+        let rect = emath::Rect::from_two_pos(start, end);
+
+        let viewport = &waves.viewports[viewport_idx];
+
+        let t1 = viewport.as_time_bigint(start_location.x, frame_width, &num_timestamps);
+        let t2 = viewport.as_time_bigint(end_location.x, frame_width, &num_timestamps);
+
+        let (time_start, time_end) = (t1.clone().min(t2.clone()), t1.max(t2));
+
+        let get_anchored_y = |y: f32, anchor: Anchor| {
+            waves
+                .get_item_at_y(y)
+                .and_then(|vidx| waves.items_tree.get_visible(vidx))
+                .map(|node| GraphicsY {
+                    item: node.item_ref,
+                    anchor,
+                })
+        };
+
+        let get_percentual_y = |lookup_y: f32, scale_y: f32| {
+            waves
+                .get_item_at_y(lookup_y)
+                .and_then(|vidx| waves.items_tree.get_visible(vidx))
+                .map(|node| {
+                    let item = node.item_ref;
+                    let p = waves.get_item_y_scale(item, scale_y);
+
+                    GraphicsY {
+                        item,
+                        anchor: Anchor::Percentual(p.unwrap_or(0.)),
+                    }
+                })
+        };
+
+        let (wave_from, wave_to) = if modifiers.shift {
+            let from = get_percentual_y(start.y.min(end.y) - y_offset , start.y.min(end.y)- y_offset);
+
+            let to = get_percentual_y(end.y.max(start.y) - y_offset - self.user.config.layout.waveforms_gap * 2., end.y.max(start.y) - y_offset);
+
+            (from, to)
+        } else {
+            let y_from = start.y.min(end.y);
+            let y_to = start.y.max(end.y);
+
+            let from = get_anchored_y(y_from - y_offset, Anchor::Top);
+
+            let mut adjusted_y = y_to - y_offset;
+            if y_to > waves.get_content_start(ctx) {
+                adjusted_y -= self.user.config.layout.waveforms_gap * 2.0;
+            }
+
+            let to = get_anchored_y(adjusted_y, Anchor::Bottom);
+
+            (from, to)
+        };
+
+        msgs.push(Message::RectangleAdded {
+            time_at_start: time_start,
+            time_at_end: time_end,
+            wave_from,
+            wave_to,
+            rect,
+        });
+    }
+
+    fn create_arrow(&self,
+        end_location: Pos2,
+        start_location: Pos2,
+        msgs: &mut Vec<Message>,
+        viewport_idx: usize,
+        waves: &WaveData,
+        num_timestamps: &BigInt,
+        frame_width: f32,
+        ctx: &mut DrawingContext<'_>,
+        offset: f32,){
+        let start_pos = (ctx.to_screen)(start_location.x, start_location.y);
+        let end_pos = (ctx.to_screen)(end_location.x, end_location.y);
+
+        let time_from: BigInt = waves.viewports[viewport_idx].as_time_bigint(
+            start_location.x,
+            frame_width,
+            &num_timestamps,
+        );
+
+        let snap_pos = Some(Pos2::new(end_location.x, end_location.y - offset));
+
+        let time_to: BigInt = self
+            .snap_to_edge(snap_pos, waves, frame_width, viewport_idx)
+            .unwrap_or_else(|| {
+                waves.viewports[viewport_idx].as_time_bigint(
+                    end_location.x,
+                    frame_width,
+                    &num_timestamps,
+                )
+            });
+
+        let attached_item_to = waves.item_ref_at_canvas_y(end_location.y - offset);
+        let attached_item_from = waves.item_ref_at_canvas_y(start_location.y - offset);
+
+        let mut head_mode = ArrowHeadMode::End;
+
+        if self.annotation_kind == Some(AnnotationKind::ArrowDoubleHead) {
+            head_mode = ArrowHeadMode::Double;
+        };
+
+        println!("Mode: {:?}", head_mode);
+
+        let wave_point_from = WavePoint {
+            time: time_from.clone(),
+            attached_item: attached_item_from,
+            screen_pos: start_pos,
+        };
+
+        let wave_point_to = WavePoint {
+            time: time_to.clone(),
+            attached_item: attached_item_to,
+            screen_pos: end_pos,
+        };
+
+        if attached_item_to.is_some() {
+            msgs.push(Message::ArrowAdded {
+                wave_point_from,
+                wave_point_to,
+                head_mode,
+            });
+        };
     }
 
     /// Draw the line used by most mouse gestures.
@@ -431,7 +588,6 @@ impl SystemState {
         );
     }
 
-    /// TODO: fixe code duplication
     fn draw_arrow_line(
         &self,
         start: Pos2,

@@ -1,43 +1,46 @@
-use egui::{
-    Align, Area, Button, Color32, Frame, Id, Layout, Order, Pos2, RichText, Stroke, Ui, UiBuilder, Vec2, debug_text::print
-};
+use egui::{Color32, Frame, Id, Pos2, Rect, Stroke, Ui};
 use egui_remixicon::icons;
 use emath::RectTransform;
 use num::BigInt;
-use serde::Serialize;
 
 use crate::{
-    SystemState,
     arrow::ArrowAnnotation,
+    comment::{Comment, CommentMessage},
     config::SurferTheme,
-    displayed_item::{DisplayedItem, DisplayedItemRef},
+    displayed_item::DisplayedItemRef,
     message::Message,
     rectangle::RectAnnotation,
-    system_state,
-    view::{self, DrawingContext},
+    time::TimeFormatter,
+    view::DrawingContext,
     viewport::Viewport,
     wave_data::WaveData,
 };
 
+const DEFAULT_HIDE_RADIUS: f32 = 5.0;
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationData {
     pub id: Id,
-    pub color: Color32,
     pub group_name: Option<String>,
     pub visible: bool,
     pub name: String,
-    pub stroke: f32,
+    pub stroke: Stroke,
+    pub show_comments: bool,
+    pub comment_box: Comment,
 }
 
 impl AnnotationData {
-    pub(crate) fn new(id_source: impl std::hash::Hash, name: String) -> Self {
+    pub(crate) fn new(id_source: impl std::hash::Hash, name: String, num: i32) -> Self {
+        let id = Id::new(id_source);
+        let c_id = Id::new(("comment_box", num));
         AnnotationData {
-            id: Id::new(id_source),
+            id: id.clone(),
             group_name: None,
             visible: true,
             name: name,
-            color: Color32::from_rgb(255, 255, 255),
-            stroke: 2.0,
+            stroke: Stroke::new(2.0, Color32::from_rgb(255, 255, 255)),
+            show_comments: false,
+            comment_box: Comment::new(c_id, id),
         }
     }
 }
@@ -104,6 +107,40 @@ impl Annotatable for Annotation {
         }
     }
 
+    fn show_comments(&self) -> bool {
+        match self {
+            Annotation::Arrow(a) => a.show_comments(),
+            Annotation::Rect(r) => r.show_comments(),
+        }
+    }
+    fn show_comment_box(&self) -> bool {
+        match self {
+            Annotation::Arrow(a) => a.show_comment_box(),
+            Annotation::Rect(r) => r.show_comment_box(),
+        }
+    }
+
+    fn set_show_comments(&mut self, show: bool) {
+        match self {
+            Annotation::Arrow(a) => a.set_show_comments(show),
+            Annotation::Rect(r) => r.set_show_comments(show),
+        }
+    }
+
+    fn get_comment_box(&self) -> Comment {
+        match self {
+            Annotation::Arrow(a) => a.get_comment_box(),
+            Annotation::Rect(r) => r.get_comment_box(),
+        }
+    }
+
+    fn get_comment_box_mut(&mut self) -> &mut Comment {
+        match self {
+            Annotation::Arrow(a) => a.get_comment_box_mut(),
+            Annotation::Rect(r) => r.get_comment_box_mut(),
+        }
+    }
+
     fn is_visible(&self) -> bool {
         match self {
             Annotation::Arrow(a) => a.is_visible(),
@@ -111,10 +148,10 @@ impl Annotatable for Annotation {
         }
     }
 
-    fn get_time_at_start(&self) -> BigInt {
+    fn get_center_time(&self) -> BigInt {
         match self {
-            Annotation::Arrow(a) => a.get_time_at_start(),
-            Annotation::Rect(r) => r.get_time_at_start(),
+            Annotation::Arrow(a) => a.get_center_time(),
+            Annotation::Rect(r) => r.get_center_time(),
         }
     }
 
@@ -135,6 +172,7 @@ impl Annotatable for Annotation {
         msgs: &mut Vec<Message>,
         y_offset: f32,
         to_screen: RectTransform,
+        time_formatter: &TimeFormatter,
     ) {
         match self {
             Annotation::Arrow(a) => a.draw(
@@ -146,6 +184,7 @@ impl Annotatable for Annotation {
                 msgs,
                 y_offset,
                 to_screen,
+                time_formatter,
             ),
             Annotation::Rect(r) => r.draw(
                 ui,
@@ -156,20 +195,35 @@ impl Annotatable for Annotation {
                 msgs,
                 y_offset,
                 to_screen,
+                time_formatter,
             ),
         }
     }
-    fn get_time_at_end(&self) -> BigInt {
+
+    fn get_comment_position(
+        &self,
+        viewport: &Viewport,
+        ctx: &DrawingContext,
+        waves: &WaveData,
+        offset: f32,
+    ) -> Pos2 {
         match self {
-            Annotation::Arrow(a) => a.get_time_at_end(),
-            Annotation::Rect(r) => r.get_time_at_end(),
+            Annotation::Arrow(a) => a.get_comment_position(viewport, ctx, waves, offset),
+            Annotation::Rect(r) => r.get_comment_position(viewport, ctx, waves, offset),
         }
     }
 
-    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32 {
+    fn get_time_info(&self, time_formatter: &TimeFormatter) -> String {
         match self {
-            Annotation::Arrow(a) => a.get_lowest_y_pos(waves),
-            Annotation::Rect(r) => r.get_lowest_y_pos(waves),
+            Annotation::Arrow(a) => a.get_time_info(time_formatter),
+            Annotation::Rect(r) => r.get_time_info(time_formatter),
+        }
+    }
+
+    fn get_messages(&self) -> Vec<CommentMessage> {
+        match self {
+            Annotation::Arrow(a) => a.get_messages(),
+            Annotation::Rect(r) => r.get_messages(),
         }
     }
 }
@@ -183,10 +237,16 @@ pub trait Annotatable {
     fn get_group_name(&self) -> Option<String>;
     fn is_selected(&mut self);
     fn set_visibility(&mut self, visible: bool);
+    fn show_comments(&self) -> bool;
+    fn show_comment_box(&self) -> bool;
+    fn set_show_comments(&mut self, show: bool);
+    fn get_comment_box(&self) -> Comment;
+    fn get_comment_box_mut(&mut self) -> &mut Comment;
+    fn get_messages(&self) -> Vec<CommentMessage>;
     fn is_visible(&self) -> bool;
-    //fn toggle_visibility(&mut self);
-    fn get_time_at_start(&self) -> BigInt; //?
+    fn get_center_time(&self) -> BigInt;
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool;
+    fn get_time_info(&self, time_formatter: &TimeFormatter) -> String;
     fn draw(
         &self,
         ui: &mut Ui,
@@ -197,25 +257,21 @@ pub trait Annotatable {
         msgs: &mut Vec<Message>,
         y_offset: f32,
         to_screen: RectTransform,
+        time_formatter: &TimeFormatter,
     );
     fn draw_quick_menu(
         &self,
         ui: &mut egui::Ui,
         msgs: &mut Vec<Message>,
         waves: &WaveData,
-        viewport: &Viewport,
-        ctx: &mut DrawingContext,
-        y_offset: f32,
         viewport_rect: egui::Rect,
         position: Pos2,
     ) {
-        let id = self.get_id();
-        let num_timestamps = &waves.safe_num_timestamps();
+        let id: Id = self.get_id();
 
-        let menu_rect = egui::Rect::from_min_size(position, egui::vec2(0.0, 0.0)); //TODO: Magic nums
+        let menu_rect = egui::Rect::from_min_size(position, egui::vec2(0.0, 0.0));
 
         if !viewport_rect.intersects(menu_rect) {
-            // msgs.push(Message::AnnotationClicked(None));
             return;
         }
 
@@ -236,7 +292,11 @@ pub trait Annotatable {
                         ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
 
                         ui.horizontal(|ui| {
-                            if ui.button(icons::SEARCH_LINE).clicked() {
+                            if ui
+                                .button(icons::SEARCH_LINE)
+                                .on_hover_text("Go to annotation")
+                                .clicked()
+                            {
                                 msgs.push(Message::GoToAnnotationPosition(
                                     id,
                                     waves.last_active_viewport_idx,
@@ -249,45 +309,120 @@ pub trait Annotatable {
                                 icons::EYE_LINE
                             };
 
-                            if ui.button(vis_icon).clicked() {
+                            if ui
+                                .button(vis_icon)
+                                .on_hover_text("Toggle visibility")
+                                .clicked()
+                            {
                                 msgs.push(Message::ToggleAnnotationVisiblility(id));
                             }
 
-                            if ui.button(icons::DELETE_BIN_LINE).clicked() {
+                            if ui
+                                .button(icons::DELETE_BIN_LINE)
+                                .on_hover_text("Delete annotation")
+                                .clicked()
+                            {
                                 msgs.push(Message::RemoveAnnotation(id));
                             }
-                            if ui.button(icons::CHAT_4_LINE).clicked() {
-                            let cursor_pos = ui.ctx().pointer_hover_pos().unwrap_or_default();
-                            let time_anchor = viewport.as_time_bigint(
-                                cursor_pos.x,
-                                ctx.cfg.canvas_size.x,
-                                num_timestamps,
-                            );
 
-                            msgs.push(Message::AddComment {
-                                time_anchor: time_anchor,
-                                y_anchor: cursor_pos.y,
-                                annotation_id: id,
-                            })
-                        }
+                            if self.is_visible() {
+                                let comment = self.get_comment_box();
+
+                                let chat_icon = if comment.visible {
+                                    icons::CHAT_4_LINE
+                                } else {
+                                    icons::CHAT_OFF_LINE
+                                };
+
+                                if ui
+                                    .button(chat_icon)
+                                    .on_hover_text("Toggle comment visibility")
+                                    .clicked()
+                                {
+                                    msgs.push(Message::ToggleCommentVisibility(id))
+                                }
+                            }
                         });
                     });
             });
     }
-    fn draw_hover_info(&self, ui: &mut egui::Ui) {
-        ui.label(format!("Type: {}", self.get_type()));
+
+    fn draw_hover_info(&self, ui: &mut egui::Ui, (time_start_str, time_end_str): (&str, &str)) {
+        ui.label(format!("Start time: {time_start_str} "));
+        ui.label(format!("End time:   {time_end_str} "));
+        ui.painter().add(egui::Shape::line_segment(
+            [ui.cursor().left_top(), ui.cursor().right_top()],
+            egui::Stroke::new(0.2, egui::Color32::LIGHT_GRAY),
+        ));
         ui.label(format!("Name: {}", self.get_name()));
-        ui.label(format!("ID: {:?}", self.get_id()));
         ui.label(format!(
             "Group: {}",
             self.get_group_name()
                 .unwrap_or_else(|| "Ungrouped".to_string())
         ));
-        ui.label(format!("Visible: {}", self.is_visible()));
+        ui.label(format!("Type: {}", self.get_type()));
+        ui.label(format!("ID: {:?}", self.get_id()));
     }
-    fn get_time_at_end(&self) -> BigInt;
-    fn get_lowest_y_pos(&self, waves: &WaveData) -> f32;
+    fn hide_annotation(&self, ui: &mut egui::Ui, stroke: Stroke, center: Pos2) -> Rect {
+        ui.painter()
+            .circle_filled(center, DEFAULT_HIDE_RADIUS, stroke.color);
 
+        egui::Rect::from_center_size(
+            center,
+            egui::vec2(DEFAULT_HIDE_RADIUS * 2.0, DEFAULT_HIDE_RADIUS * 2.0),
+        )
+    }
+    fn get_comment_position(
+        &self,
+        viewport: &Viewport,
+        ctx: &DrawingContext,
+        waves: &WaveData,
+        offset: f32,
+    ) -> Pos2;
+
+    fn draw_comment_box(
+        &self,
+        ui: &mut egui::Ui,
+        viewport_idx: usize,
+        msgs: &mut Vec<Message>,
+        comment_position: Pos2,
+    ) -> (Id, Comment) {
+        let mut comment = self.get_comment_box();
+        comment.id = Id::new((comment.id, viewport_idx));
+
+        comment.name = self.get_name();
+
+        // X-coordinate
+        comment.rect.min.x = comment_position.x + comment.offset.x;
+        comment.rect.max.x = comment_position.x + comment.offset.x + comment.size.x;
+
+        // Y-coordinate
+        comment.rect.min.y = comment_position.y + comment.offset.y;
+        comment.rect.max.y = comment_position.y + comment.offset.y + comment.size.y;
+
+        comment.anchor = comment_position;
+        ui.add(&mut comment);
+        // Handle "Enter" key to submit new comment
+        if let Some(save_text) = &comment.save_text {
+            msgs.push(Message::AddCommentMessage(
+                comment.annotation_id,
+                save_text.clone(),
+                "user".to_string(),
+            ));
+        }
+
+        (comment.annotation_id, comment)
+    }
+
+    fn update_comment_box(&mut self, comment: Comment) {
+        let c = self.get_comment_box_mut();
+        c.name = comment.name;
+        c.new_text = comment.new_text;
+        c.offset = comment.offset;
+        c.size = comment.size;
+        c.rect = comment.rect;
+        c.visible = comment.visible;
+    }
 }
 
 impl WaveData {
@@ -307,9 +442,9 @@ impl WaveData {
         y_offset: f32,
         viewport_rect: egui::Rect,
         to_screen: RectTransform,
-        frame_size: Vec2,
+        time_formatter: &TimeFormatter,
     ) {
-        let num_timestamps = self.safe_num_timestamps();
+        let mut comment_changes = Vec::new();
 
         for annotation in &self.annotations {
             annotation.draw(
@@ -321,6 +456,7 @@ impl WaveData {
                 msgs,
                 y_offset,
                 to_screen,
+                time_formatter,
             );
 
             if self.selected_annotation == Some(annotation.get_id())
@@ -342,38 +478,26 @@ impl WaveData {
                     ui,
                     msgs,
                     &self,
-                    viewport,
-                    ctx,
-                    y_offset,
                     viewport_rect,
                     menu_position,
                 );
-
-                //annotation.is_selected();
             }
         }
-    }
-
-    // TODO: is not used, should we let the logic stay in lib?
-    pub fn set_annotation_menu_pos_time(
-        &mut self,
-        menu_pos: Pos2,
-        to_screen: RectTransform,
-        viewport_idx: usize,
-        frame_width: f32,
-    ) {
-        let num_timestamps: BigInt = self.safe_num_timestamps();
-
-        let menu_pos_local = to_screen.inverse().transform_pos(menu_pos);
-
-        let menu_pos_time: BigInt = self.viewports[viewport_idx].as_time_bigint(
-            menu_pos_local.x, // HÄR blir felet. jag måste få in x lokalt
-            frame_width,
-            &num_timestamps,
-        );
-
-        self.annotation_menu_time = Some(menu_pos_time);
-
-        self.annotation_menu_pos = Some(menu_pos);
+        for annotation in &self.annotations {
+            if annotation.show_comment_box() {
+                let comment_position =
+                    annotation.get_comment_position(viewport, ctx, self, y_offset);
+                comment_changes.push(annotation.draw_comment_box(
+                    ui,
+                    viewport_idx,
+                    msgs,
+                    comment_position,
+                ));
+            }
+        }
+        if !comment_changes.is_empty() {
+            msgs.push(Message::UpdateCommentBox(comment_changes));
+        }
+        
     }
 }

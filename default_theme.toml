@@ -24,8 +24,8 @@ wide_opacity = 0.0
 cursor = { color = "b63935", width=2 }
 gesture = { color = "e9da16", width = 2 }
 measure = { color = "808080", width = 2 }
-annotation_rectangle = {color = "ce9178", width = 2} #TODO: Maybe slightly change? Since cursor doesn't entirely match red and so on.
-annotation_arrow = {color = "c586c0", width = 2} #I chose orange for rect and pink/purple for arrow since mostly unused, but only temporary and feel free to change.
+annotation_rectangle = {color = "ffd602", width = 2}
+annotation_arrow = {color = "ffd602", width = 2}
 linewidth = 2
 thick_linewidth = 4
 vector_transition_width = 6
@@ -51,6 +51,6 @@ style = { color="222222", width=2 }
 density = 1
 
 [relation_arrow]
-style = { color  = "c586c0", width = 1.3 }
+style = { color  = "c61521", width = 1.3 }
 head_angle = 25
 head_length = 8

@@ -4,6 +4,7 @@ use crate::{
     displayed_item::DisplayedVariable,
     fzcmd::expand_command,
     menus::generic_context_menu,
+    time::TimeFormatter,
     tooltips::variable_tooltip_text,
     wave_container::{ScopeId, VarId, VariableMeta},
 };
@@ -499,15 +500,24 @@ impl SystemState {
                     let Some(waves) = self.user.waves.as_ref() else {
                         return msgs;
                     };
+                    let time_formatter = TimeFormatter::new(
+                        &waves.inner.metadata().timescale,
+                        &self.user.wanted_timeunit,
+                        &self.get_time_format(),
+                    );
                     Panel::right("Annotation list")
                         .default_size(290.)
                         .size_range(100.0..=max_width)
-                        .frame(Frame {
-                            fill: self.user.config.theme.primary_ui_color.background,
-                            ..Default::default()
-                        })
+                        .show_separator_line(false)
+                        .frame(
+                            Frame::default()
+                                .inner_margin(0)
+                                .outer_margin(0)
+                                .fill(self.user.config.theme.secondary_ui_color.background)
+                                .stroke(std_stroke),
+                        )
                         .show_inside(ui, |ui| {
-                            waves.draw_annotation_list(ui, waves,&mut msgs);
+                            waves.draw_annotation_list(ui, &mut msgs, &time_formatter);
                         });
                 }
 

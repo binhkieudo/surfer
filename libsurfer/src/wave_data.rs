@@ -9,7 +9,6 @@ use surfer_translation_types::{TranslationPreference, Translator, VariableValue}
 use tracing::{error, info, warn};
 
 use crate::annotation::{Annotatable, Annotation};
-use crate::comment::Comment;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     DisplayedDivider, DisplayedFieldRef, DisplayedGroup, DisplayedItem, DisplayedItemRef,
@@ -21,7 +20,7 @@ use crate::transaction_container::{StreamScopeRef, TransactionRef, TransactionSt
 use crate::transactions::calculate_rows_of_stream;
 use crate::translation::{DynTranslator, TranslatorList, VariableInfoExt};
 use crate::variable_name_type::VariableNameType;
-use crate::view::ItemDrawingInfo;
+use crate::view::{DrawingContext, ItemDrawingInfo};
 use crate::viewport::Viewport;
 use crate::wave_container::{
     AnalogCacheKey, ScopeRef, ScopeRefExt as _, VariableMeta, VariableRef, VariableRefExt,
@@ -70,7 +69,9 @@ pub struct WaveData {
     pub selected_annotation: Option<Id>,
 
     pub annotations: Vec<Annotation>,
-    pub available_groups: Vec<String>, // List of unique group names
+    #[serde(default)]
+    pub annotation_groups: Vec<String>, // List of unique annotation group names
+    #[serde(default)]
     pub annotation_list_visible: bool,
     pub annotation_counter: i32,
     pub last_active_viewport_idx: usize,
@@ -208,7 +209,7 @@ impl WaveData {
             markers: self.markers.clone(),
             annotations: self.annotations.clone(),
             selected_annotation: None,
-            available_groups: Vec::new(), // List of unique group names
+            annotation_groups: Vec::new(), // List of unique group names
             annotation_list_visible: false,
             annotation_counter: self.annotation_counter,
             last_active_viewport_idx: 0,
@@ -525,7 +526,6 @@ impl WaveData {
     }
 
     /// Remove a single item, it's legal to call this function with an invalid ID
-    /// TODO: Remove annotations
     pub fn remove_displayed_item(&mut self, id: DisplayedItemRef) {
         let Some(idx) = self
             .items_tree
@@ -886,11 +886,18 @@ impl WaveData {
             .map_or(self.drawing_infos.len() - 1, |(idx, _)| idx)
     }
 
-    //Returns the y_value of the current visible items
-    pub fn get_content_height(&self, offset: f32) -> f32 {
-        let first_element_y = self.drawing_infos.first().unwrap().top();
+    //Return the y-coordinate of the first visible item in global coordinates
+    pub fn get_content_start(&self, ctx: &mut DrawingContext<'_>) -> f32 {
+        let first_element_top = self.drawing_infos.first().unwrap().top();
+        let y = (ctx.to_screen)(0., 0.).y;
+        first_element_top - y
+    }
+
+    //Returns the y-coordinate of the current visible items in global coordinates
+    pub fn get_content_height(&self, ctx: &mut DrawingContext<'_>) -> f32 {
         let last_element_bottom = self.drawing_infos.last().unwrap().bottom();
-        last_element_bottom - first_element_y + offset - 0.1 //0.1px margin to keep value within height limit
+        let y = (ctx.to_screen)(0., 0.).y;
+        last_element_bottom - y
     }
 
     /// Find the item at a given y-location.

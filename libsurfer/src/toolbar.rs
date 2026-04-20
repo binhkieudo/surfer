@@ -1,11 +1,10 @@
 //! Toolbar handling.
-use eframe::glow::TRUE;
-use egui::{Button, Context, Layout, Panel, RichText, TopBottomPanel, Ui};
+use egui::{Button, Layout, Panel, RichText, Ui};
 use egui_remixicon::icons;
 use emath::{Align, Vec2};
 
-use crate::arrow::ArrowHeadMode;
 use crate::message::MessageTarget;
+use crate::mousegestures::AnnotationKind;
 use crate::time::time_input_widget;
 use crate::wave_container::SimulationStatus;
 use crate::wave_source::LoadOptions;
@@ -364,14 +363,13 @@ impl SystemState {
 
             ui.separator();
 
-            //TODO: should be drop down menu with the different types of annotations
             add_toolbar_button(
                 ui,
                 msgs,
                 icons::EDIT_BOX_LINE,
                 "Add Rectangle",
-                Message::AddRectangle,
-                wave_loaded && !self.add_rectangle,
+                Message::SetMouseGestureAnnotation(Some(AnnotationKind::Rectangle)),
+                wave_loaded && self.annotation_kind != Some(AnnotationKind::Rectangle),
             );
 
             add_toolbar_button(
@@ -379,20 +377,16 @@ impl SystemState {
                 msgs,
                 icons::ARROW_RIGHT_UP_FILL,
                 "Add Arrow",
-                Message::AddArrow {
-                    head_mode: ArrowHeadMode::End,
-                },
-                wave_loaded & !self.add_simple_arrow,
+                Message::SetMouseGestureAnnotation(Some(AnnotationKind::ArrowSingleHead)),
+                wave_loaded && self.annotation_kind != Some(AnnotationKind::ArrowSingleHead),
             );
             add_toolbar_button(
                 ui,
                 msgs,
                 icons::ARROW_LEFT_RIGHT_FILL,
                 "Add Double Headed Arrow",
-                Message::AddArrow {
-                    head_mode: ArrowHeadMode::Double,
-                },
-                wave_loaded & !self.add_double_headed_arrow,
+                Message::SetMouseGestureAnnotation(Some(AnnotationKind::ArrowDoubleHead)),
+                wave_loaded && self.annotation_kind != Some(AnnotationKind::ArrowDoubleHead),
             );
 
             add_toolbar_button(
@@ -400,7 +394,7 @@ impl SystemState {
                 msgs,
                 icons::LIST_CHECK,
                 "Annotations list",
-                Message::SetAnnotationlistVisible(),
+                Message::ToggleAnnotationlistVisibility(),
                 wave_loaded,
             );
 

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use camino::Utf8PathBuf;
 use derive_more::Debug;
-use egui::{Color32, DroppedFile, Id, Rect};
+use egui::{DroppedFile, Id, Rect};
 use emath::{Pos2, RectTransform, Vec2};
 use ftr_parser::types::Transaction;
 use num::BigInt;
@@ -12,11 +12,13 @@ use surver::SurverStatus;
 
 use crate::arrow::{ArrowHeadMode, WavePoint};
 use crate::async_util::AsyncJob;
+use crate::comment::Comment;
 use crate::config::{PrimaryMouseDrag, TransitionValue};
 use crate::displayed_item_tree::{ItemIndex, VisibleItemIndex};
 use crate::frame_buffer::FrameBufferColorMode;
 use crate::graphics::{Graphic, GraphicId, GraphicsY};
 use crate::hierarchy::{ParameterDisplayLocation, ScopeExpandType};
+use crate::mousegestures::AnnotationKind;
 use crate::state::UserState;
 use crate::transaction_container::{
     StreamScopeRef, TransactionContainer, TransactionRef, TransactionStreamRef,
@@ -447,7 +449,7 @@ pub enum Message {
     /// Should only used for tests. Expands the parameter section so that one can test the rendering.
     ExpandParameterSection,
     AsyncDone(AsyncJob),
-    AddRectangle,
+    SetMouseGestureAnnotation(Option<AnnotationKind>),
     RectangleAdded {
         time_at_start: BigInt,
         time_at_end: BigInt,
@@ -455,10 +457,6 @@ pub enum Message {
         wave_to: Option<GraphicsY>,
         rect: Rect,
     },
-    AddArrow {
-        head_mode: ArrowHeadMode,
-    },
-
     ArrowAdded {
         wave_point_from: WavePoint,
         wave_point_to: WavePoint,
@@ -466,13 +464,12 @@ pub enum Message {
     },
     RemoveAnnotation(Id),
     ToggleAnnotationVisiblility(Id),
+    ToggleAnnotationListShowComments(Id),
     GoToAnnotationPosition(Id, usize),
-    SetAnnotationlistVisible(), //TODO: Change name to toggle
-    ShowAnnotationlist,
+    ToggleAnnotationlistVisibility(),
     CreateAnnotationGroup(String),
     DeleteAnnotationGroup(String),
     DeleteAllAnnotationInGroup(String),
-    //AddDoubleHeadedArrow,
     UpdateAnnotationGroup(Id, Option<String>),
     SetGroupVisibility(Option<String>, bool),
     UpdateAnnotationName(Id, String),
@@ -484,10 +481,9 @@ pub enum Message {
         Option<f32>,
     ),
     SetActiveViewport(usize),
-    AddComment {
-        time_anchor: BigInt,
-        y_anchor: f32,
-        annotation_id: Id,
-    },
     ClickHandled(),
+    UpdateCommentBox(Vec<(Id, Comment)>),
+    AddCommentMessage(Id, String, String),
+    RemoveCommentMessage(Id, Id),
+    ToggleCommentVisibility(Id),
 }

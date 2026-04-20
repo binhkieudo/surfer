@@ -28,20 +28,19 @@ impl Direction {
         }
     }
 }
-//TODO: added Clone to the following 3, will most like be unnecessary in future
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Anchor {
     Top,
     Center,
     Bottom,
-    Percentual,
+    Percentual(f32),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GraphicsY {
     pub item: DisplayedItemRef,
     pub anchor: Anchor,
-    pub p: Option<f32>,
 }
 
 /// A point used to place graphics.
@@ -83,9 +82,7 @@ impl WaveData {
             .map(|(_, info)| match y.anchor {
                 Anchor::Top => info.top(),
                 Anchor::Center => info.top() + (info.bottom() - info.top()) / 2.,
-                Anchor::Percentual => {
-                    info.top() + y.p.unwrap_or(0.0) * (info.bottom() - info.top())
-                }
+                Anchor::Percentual(p) => info.top() + p * (info.bottom() - info.top()),
                 Anchor::Bottom => info.bottom(),
             })
             .map(|point| point - self.top_item_draw_offset)
@@ -99,13 +96,6 @@ impl WaveData {
             .find(|(node, _info)| node.item_ref == item)
             .map(|(_, info)| {
                 let p = (y - info.top()) / (info.bottom() - info.top());
-                println!(
-                    "y = {} top= {}, bottom = {}, p= {}",
-                    y,
-                    info.top(),
-                    info.bottom(),
-                    p
-                );
                 p
             })
     }
