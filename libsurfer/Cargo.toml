@@ -40,6 +40,10 @@ accesskit = ["eframe/accesskit", "eframe/web_screen_reader"]
 f128 = ["dep:f128"]
 performance_plot = ["dep:egui_plot"]
 python = ["pyo3", "surfer-translation-types/pyo3"]
+# Enable when building the wasm32 target for the VS Code extension.
+# Activates VS Code-specific behaviour (e.g. receiving the file URL via postMessage
+# rather than reading it from URL search params).
+vscode = []
 wasm_plugins = [
     "dep:extism",
     "dep:extism-manifest",

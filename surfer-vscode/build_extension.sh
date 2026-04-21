@@ -4,7 +4,7 @@ set -eo pipefail
 
 cd ../surfer
 git submodule update --init --recursive
-trunk build --release
+trunk build --release --features vscode
 cd -
 mkdir -p extension/surfer
 cp ../surfer/dist/manifest.json \

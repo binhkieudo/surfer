@@ -19,6 +19,13 @@ accesskit = ["libsurfer/accesskit"]
 f128 = ["libsurfer/f128"]
 performance_plot = ["libsurfer/performance_plot"]
 python = ["libsurfer/python"]
+# Enable when building the wasm32 target for the VS Code extension.
+# Propagates to libsurfer and activates VS Code-specific behaviour.
+# Use #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+# for VS Code-specific code.
+# Use #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
+# for browser-specific code.
+vscode = ["libsurfer/vscode"]
 wasm_plugins = ["libsurfer/wasm_plugins"]
 
 [dependencies]
