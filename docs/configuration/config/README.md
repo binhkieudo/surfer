@@ -51,7 +51,7 @@ On native builds, configuration is loaded in this order, with later sources over
 | `animation_time` | `0.1` | non-negative number | Duration of UI animations in seconds. |
 | `animation_enabled` | `true` | boolean | Enable or disable UI animations entirely. |
 | `show_divider_text` | `false` | boolean | Show divider labels inline in the waveform area. |
-| `max_url_length` | `65534` | integer | Maximum URL length used for remote connections. Useful when a proxy enforces a lower limit. |
+| `max_url_length` | `65534` | integer | Maximum URL length used for remote connections. Useful when a proxy enforces a limit. |
 
 The remaining top-level keys are tables documented below: `default_time_format`, `layout`, `gesture`, `behavior`, `wcp`, `server`, and `shortcuts`.
 
@@ -91,7 +91,7 @@ Controls the initial UI layout and waveform rendering behavior.
 | `hierarchy_style` | `"Separate"` | `Separate`, `Tree`, `Variables` | Layout style used for the hierarchy and variable list. |
 | `waveforms_text_size` | `11.0` | non-negative number | Text size for waveform values, in points. |
 | `waveforms_line_height` | `16.0` | non-negative number | Base line height for waveforms, in points. |
-| `waveforms_gap` | `2.5` | non-negative number | Vertical gap between waveform traces. |
+| `waveforms_gap` | `2.5` | non-negative number | Vertical gap above and below waveform traces. Basically, how far the background is drawn. |
 | `waveforms_line_height_multiples` | `[1, 2, 4, 8, 16]` | list of non-negative numbers | Available line-height multipliers for taller rows. |
 | `transactions_line_height` | `30.0` | non-negative number | Line height for transaction streams. |
 | `zoom_factors` | `[0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 2.5]` | list of non-negative numbers | Available UI zoom factors. |
@@ -99,7 +99,7 @@ Controls the initial UI layout and waveform rendering behavior.
 | `highlight_focused` | `false` | boolean | Highlight the waveform of the focused item. |
 | `move_focus_on_inserted_marker` | `true` | boolean | Move focus to newly inserted markers. |
 | `fill_high_values` | `true` | boolean | Fill the high state in boolean waveforms. |
-| `use_dinotrace_style` | `false` | boolean | Use Dinotrace-style digital waveform drawing. |
+| `use_dinotrace_style` | `false` | boolean | Use Dinotrace-style digital waveform drawing. This means no upper line and a bold lower line for all zeros vector values and a bold upper line for all ones vector values.|
 | `transition_value` | `"Next"` | `Previous`, `Next`, `Both` | Which value to show when the cursor is exactly on a transition. |
 
 ## `[gesture]`
@@ -160,7 +160,9 @@ Settings for Surver's HTTP server.
 
 ## `[shortcuts]`
 
-The `shortcuts` table maps an action name to a list of key chords. Each value is an array of strings such as `"Command+O"` or `"PageDown"`.
+The `shortcuts` table maps an action name to a list of key chords. Each value is an array of strings such as `"Command+O"` or `"PageDown"`, where each value in the list is one shortcut, not a sequence. Hence, each action can have multiple alternative shortcuts.
+
+`Command` corresponds to ⌘ on Mac and `Ctrl` on all other platforms. For a list of key names, see [Key](https://docs.rs/egui/latest/egui/enum.Key.html).
 
 The default configuration defines these actions:
 

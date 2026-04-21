@@ -40,7 +40,7 @@ style = { color = "222222", width = 2 }
 | --- | --- | --- |
 | `foreground` | color | Default foreground text color used across the UI. |
 | `border_color` | color | Border color between UI elements. |
-| `alt_text_color` | color | Alternate text color, mainly used in marker-related UI. |
+| `alt_text_color` | color | Alternate text color. Often when an explicit background color is used, the color with most contrast is chosen between `foreground` and this. |
 | `canvas_colors` | [`ThemeColorTriple`](#themecolortriple) | Colors for the waveform canvas. |
 | `primary_ui_color` | [`ThemeColorPair`](#themecolorpair) | Main UI background and foreground colors. |
 | `secondary_ui_color` | [`ThemeColorPair`](#themecolorpair) | Secondary UI colors, used for panels, lists, and inputs. |
@@ -48,7 +48,7 @@ style = { color = "222222", width = 2 }
 | `accent_info` | [`ThemeColorPair`](#themecolorpair) | Informational accent colors. |
 | `accent_warn` | [`ThemeColorPair`](#themecolorpair) | Warning accent colors. |
 | `accent_error` | [`ThemeColorPair`](#themecolorpair) | Error accent colors. |
-| `cursor` | [`SurferLineStyle`](#surferlinestyle) | Style used to draw the main cursor. |
+| `cursor` | [`SurferLineStyle`](#surferlinestyle) | Style used to draw the main cursor and marker vertical lines. |
 | `gesture` | [`SurferLineStyle`](#surferlinestyle) | Style used for mouse gesture lines. |
 | `measure` | [`SurferLineStyle`](#surferlinestyle) | Style used for measurement lines. |
 | `clock_highlight_line` | [`SurferLineStyle`](#surferlinestyle) | Line style used when clock highlighting is in `Line` mode. |
