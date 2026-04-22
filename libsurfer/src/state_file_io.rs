@@ -9,13 +9,36 @@ use tracing::error;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::async_util::perform_async_work;
 use crate::channels::{checked_send, checked_send_many};
+#[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+use crate::file_dialog::vscode_open_dialog_with_filter;
 
 use crate::{
     SystemState, async_util::AsyncJob, message::Message, wave_source::STATE_FILE_EXTENSION,
 };
 
+// JS bridge function defined in integration.js; used to post messages to the
+// VS Code extension host (where `showSaveFilePicker` is not available).
+#[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    fn surfer_notify_host(message_json: &str);
+}
+
 impl SystemState {
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+    pub(crate) fn load_state_file(&mut self, path: Option<PathBuf>) {
+        if path.is_some() {
+            return;
+        }
+
+        let filter = (
+            format!("Surfer state files (*.{STATE_FILE_EXTENSION})"),
+            vec![STATE_FILE_EXTENSION.to_string()],
+        );
+        vscode_open_dialog_with_filter("state_file", &filter);
+    }
+
+    #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
     pub(crate) fn load_state_file(&mut self, path: Option<PathBuf>) {
         if path.is_some() {
             return;
@@ -129,7 +152,20 @@ impl SystemState {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+    pub(crate) fn save_state_file(&mut self, _path: Option<PathBuf>) {
+        let Some(encoded) = self.encode_state() else {
+            return;
+        };
+
+        // In the VS Code webview, `showSaveFilePicker` is not available.
+        // Send the encoded state to the extension host via the JS bridge so
+        // the host can show a native VS Code save dialog and write the file.
+        let msg = serde_json::json!({ "command": "vscodeSaveStateFromWasm", "data": encoded });
+        surfer_notify_host(&msg.to_string());
+    }
+
+    #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
     pub(crate) fn save_state_file(&mut self, path: Option<PathBuf>) {
         if path.is_some() {
             return;

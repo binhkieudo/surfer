@@ -359,7 +359,7 @@ impl StartupParams {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
 fn vcd_from_url() -> UrlArgs {
     let search_params = web_sys::window()
         .and_then(|window| window.location().search().ok())

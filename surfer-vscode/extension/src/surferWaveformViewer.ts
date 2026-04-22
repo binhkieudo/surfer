@@ -22,9 +22,41 @@ function openDialogMessage(kind: string, fileUri: vscode.Uri, webview: vscode.We
       return JSON.stringify({ LoadWaveformFileFromUrl: [url, 'KeepAll'] })
     case 'command_file':
       return JSON.stringify({ LoadCommandFileFromUrl: url })
+    case 'state_file':
+      return null
     default:
       return null
   }
+}
+
+function normalizeDialogFilters(
+  filters: Array<{ name: string; extensions: string[] }> | undefined
+): Record<string, string[]> {
+  const filterRecord: Record<string, string[]> = {}
+
+  for (const f of (filters ?? [])) {
+    const normalized: string[] = []
+
+    for (const extRaw of (f.extensions ?? [])) {
+      const ext = (extRaw ?? '').trim().replace(/^\./, '')
+      if (!ext) {
+        continue
+      }
+
+      // VS Code dialog filters accept single extension segments (e.g. "ron").
+      // Convert multi-part forms like "surf.ron" to their trailing segment.
+      const tail = ext.split('.').filter(Boolean).pop()
+      if (!tail) {
+        continue
+      }
+
+      normalized.push(tail)
+    }
+
+    filterRecord[f.name] = Array.from(new Set(normalized))
+  }
+
+  return filterRecord
 }
 
 export class SurferWaveformViewerEditorProvider
@@ -86,11 +118,7 @@ export class SurferWaveformViewerEditorProvider
 
         case 'showOpenDialog': {
           const { kind, filters } = message
-          // `filters` is an array of {name, extensions} objects from the Rust side.
-          const filterRecord: Record<string, string[]> = {}
-          for (const f of (filters ?? [])) {
-            filterRecord[f.name] = f.extensions
-          }
+          const filterRecord = normalizeDialogFilters(filters)
           const uris = await vscode.window.showOpenDialog({
             canSelectMany: false,
             filters: filterRecord,
@@ -106,36 +134,22 @@ export class SurferWaveformViewerEditorProvider
                 chosenDir,
               ],
             }
-            const msg = openDialogMessage(kind, uris[0], webviewPanel.webview)
-            if (msg !== null) {
-              webviewPanel.webview.postMessage({ command: 'InjectMessage', message: msg })
+            if (kind === 'state_file') {
+              try {
+                const bytes = await vscode.workspace.fs.readFile(uris[0])
+                const msg = JSON.stringify({ LoadStateFromData: Array.from(bytes) })
+                webviewPanel.webview.postMessage({ command: 'InjectMessage', message: msg })
+              } catch (e) {
+                vscode.window.showErrorMessage(`Surfer: failed to read state file: ${e}`)
+              }
             } else {
-              console.log(`Surfer: unknown open-dialog kind '${kind}'`)
+              const msg = openDialogMessage(kind, uris[0], webviewPanel.webview)
+              if (msg !== null) {
+                webviewPanel.webview.postMessage({ command: 'InjectMessage', message: msg })
+              } else {
+                console.log(`Surfer: unknown open-dialog kind '${kind}'`)
+              }
             }
-          }
-          break;
-        }
-
-        case 'showSaveDialog': {
-          const { kind, filters } = message
-          const filterRecord: Record<string, string[]> = {}
-          for (const f of (filters ?? [])) {
-            filterRecord[f.name] = f.extensions
-          }
-          // Derive a default file name extension from the first filter entry.
-          const firstExt = filters?.[0]?.extensions?.[0]
-          const defaultUri = firstExt
-            ? vscode.Uri.file(path.join(require('os').homedir(), `surfer_state.${firstExt}`))
-            : undefined
-          const uri = await vscode.window.showSaveDialog({
-            filters: filterRecord,
-            title: message.title ?? 'Save file',
-            defaultUri,
-          })
-          if (uri) {
-            // Ask the webview for the encoded state, then write it via the
-            // extension host which has full file-system access.
-            webviewPanel.webview.postMessage({ command: 'RequestState', kind, targetUri: uri.toString() })
           }
           break;
         }
@@ -149,6 +163,31 @@ export class SurferWaveformViewerEditorProvider
             await vscode.workspace.fs.writeFile(targetUri, encoded)
           } catch (e) {
             vscode.window.showErrorMessage(`Surfer: failed to save state file: ${e}`)
+          }
+          break;
+        }
+
+        case 'vscodeSaveStateFromWasm': {
+          // Sent by the Rust code via surfer_notify_host. Contains the encoded state.
+          // Show the save dialog and write the file.
+          const filterRecord: Record<string, string[]> = {
+            'Surfer state files': ['ron'],
+          }
+          const defaultUri = vscode.Uri.file(
+            require('path').join(require('os').homedir(), 'surfer_state.surf.ron')
+          )
+          const uri = await vscode.window.showSaveDialog({
+            filters: filterRecord,
+            title: 'Save Surfer state',
+            defaultUri,
+          })
+          if (uri) {
+            const encoded = new TextEncoder().encode(message.data)
+            try {
+              await vscode.workspace.fs.writeFile(uri, encoded)
+            } catch (e) {
+              vscode.window.showErrorMessage(`Surfer: failed to save state file: ${e}`)
+            }
           }
           break;
         }
@@ -191,6 +230,8 @@ export class SurferWaveformViewerEditorProvider
     const load_notifier = `
         (function() {
             const vscode = ${vscodeApi};
+            // Store the vscode API globally for surfer_notify_host (from integration.js)
+            window.__surfer_host_api = vscode;
 
             // Expose native VS Code file-dialog helpers to the Rust/WASM side.
             // These are called by the \`vscode\` feature build via wasm_bindgen externs.
@@ -198,13 +239,8 @@ export class SurferWaveformViewerEditorProvider
                 const filters = JSON.parse(filtersJson);
                 vscode.postMessage({ command: 'showOpenDialog', kind, filters });
             };
-            window.vscode_show_save_dialog = function(kind, filtersJson) {
-                const filters = JSON.parse(filtersJson);
-                vscode.postMessage({ command: 'showSaveDialog', kind, filters });
-            };
 
-            // Listen for 'RequestState' from the host (triggered by showSaveDialog)
-            // and reply with the current encoded state via get_state().
+            // Listen for 'RequestState' from the host and reply with the current encoded state via get_state().
             window.addEventListener('message', async (event) => {
                 if (event.data?.command === 'RequestState') {
                     const state = await get_state();

@@ -29,17 +29,14 @@ use crate::wave_source::LoadOptions;
 //   | `"waveform_keep_available"`| `LoadWaveformFileFromUrl(url, KeepAvailable)`  |
 //   | `"waveform_keep_all"`      | `LoadWaveformFileFromUrl(url, KeepAll)`        |
 //   | `"command_file"`           | `LoadCommandFileFromUrl(url)`                  |
+//   | "state_file"             | `LoadStateFromData(bytes)`                     |
 //
 //   `filters_json` is a JSON array of `{"name":str,"extensions":[str]}` objects.
 //
-// `vscode_show_save_dialog(kind, filters_json)` – same shape, for save pickers.
-//   The extension host is responsible for writing the file and sending back any
-//   confirmation messages.
 #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
 #[wasm_bindgen]
 extern "C" {
     fn vscode_show_open_dialog(kind: &str, filters_json: &str);
-    fn vscode_show_save_dialog(kind: &str, filters_json: &str);
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +64,7 @@ impl SystemState {
         });
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
     pub(crate) fn file_dialog_open<F>(
         &mut self,
         title: &'static str,
@@ -123,26 +120,6 @@ impl SystemState {
         });
     }
 
-    // For VS Code, `file_dialog_save` delegates to `file_dialog_save_vscode`.
-    // Callers in state_file_io.rs that already hold the data to be written should
-    // be updated to call `file_dialog_save_vscode` directly (with an appropriate
-    // `kind`) so the extension host can persist the file via its own file-system
-    // access rights.
-    #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
-    pub(crate) fn file_dialog_save<F, Fut>(
-        &mut self,
-        title: &'static str,
-        filter: (String, Vec<String>),
-        _messages: F,
-    ) where
-        F: FnOnce(FileHandle) -> Fut + 'static,
-        Fut: Future<Output = Vec<Message>> + 'static,
-    {
-        let _ = title;
-        let filters_json = filters_to_json(&filter);
-        vscode_show_save_dialog("state_file", &filters_json);
-    }
-
     pub(crate) fn open_file_dialog(&mut self, mode: OpenMode) {
         let load_options: LoadOptions = (mode, self.user.config.behavior.keep_during_reload).into();
 
@@ -163,8 +140,7 @@ impl SystemState {
                 LoadOptions::KeepAvailable => "waveform_keep_available",
                 LoadOptions::KeepAll => "waveform_keep_all",
             };
-            let filters_json = filters_to_json(&filter);
-            vscode_show_open_dialog(kind, &filters_json);
+            vscode_open_dialog_with_filter(kind, &filter);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -193,8 +169,7 @@ impl SystemState {
 
         #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
         {
-            let filters_json = filters_to_json(&filter);
-            vscode_show_open_dialog("command_file", &filters_json);
+            vscode_open_dialog_with_filter("command_file", &filter);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -233,6 +208,7 @@ impl SystemState {
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", feature = "vscode")))]
 #[cfg(not(target_os = "macos"))]
 fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> AsyncFileDialog {
     AsyncFileDialog::new()
@@ -241,6 +217,7 @@ fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> Asy
         .add_filter("All files", &["*"])
 }
 
+#[cfg(not(all(target_arch = "wasm32", feature = "vscode")))]
 #[cfg(target_os = "macos")]
 fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> AsyncFileDialog {
     AsyncFileDialog::new()
@@ -249,9 +226,15 @@ fn create_file_dialog(filter: (String, Vec<String>), title: &'static str) -> Asy
 }
 
 /// Serialise a `(name, extensions)` filter pair into the JSON array expected by
-/// `vscode_show_open_dialog` / `vscode_show_save_dialog`.
+/// `vscode_show_open_dialog`.
 ///
 /// Example output: `[{"name":"Waveform files","extensions":["vcd","fst"]}]`
+#[cfg(all(target_arch = "wasm32", feature = "vscode"))]
+pub(crate) fn vscode_open_dialog_with_filter(kind: &str, filter: &(String, Vec<String>)) {
+    let filters_json = filters_to_json(filter);
+    vscode_show_open_dialog(kind, &filters_json);
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "vscode"))]
 fn filters_to_json(filter: &(String, Vec<String>)) -> String {
     let exts = filter
