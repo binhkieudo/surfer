@@ -261,7 +261,11 @@ impl SystemState {
         let source = WaveSource::File(filename.clone());
         let source_copy = source.clone();
         let sender = self.channels.msg_sender.clone();
-
+        if !filename.exists() {
+            let msg = Message::Error(anyhow!("Waveform file is missing: {filename}"));
+            checked_send(&sender, msg);
+            return Ok(());
+        }
         perform_work(move || {
             let header_result = wellen::viewers::read_header_from_file(
                 filename.as_str(),
