@@ -9,6 +9,43 @@ released as a new version.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.7.0] - 2027-04-27
+
+## Added
+
+* Keyboard shortcut for Zoom to fit, default Shift + F.
+* Filtering on level in the log message window.
+* Three new themes based on Rose Pine.
+* The file name is shown in the window title.
+* Time widget in the toolbar to go to time and position cursor at time. Ctrl+G will focus the widget (configurable).
+* Frame buffer window to graphically see the contents of an array or a vector. A number of new commands starting with `frame_buffer` have been added so select variable/array and set parameters.
+* It is possible to select a full range analog scale.
+* Divider and group names are optionally displayed in the waveform part.
+* It is possible to adjust the gap between waveforms using the `waveforms_gap` configuration parameter.
+* `goto_time` command that supports optional units: `goto_time 1000` or `goto_time 1.2 ns`.
+
+## Changed
+
+## Fixed
+
+* Analog scale is more visible in light themes.
+* State file loading and saving on macOS. Only uses `.ron` as only a single extension is supported on macOS, but one may want to use `.surf.ron` to get automatic detection of state files to work.
+* Reloading a variable where the number of bits have changed is now reflected in the variable list.
+* VS Code plugin download is significantly smaller as redundant files are removed.
+* The background is now correctly drawn for the variable name.
+* Surfer supports the new FST variant that Verilator generates.
+* The performance should be much better when having lots of variables.
+* Bug when using Surver with multiple files.
+* It is possible to reload from Surver directly after restarting Surver.
+* `cursor_set` now supports optional time unit, like `cursor_set 10 ms`.
+* The VS Code extension now use file dialogs through VS Code, so saving the state will work. There may be issues with extensions though on some platforms. Please report.
+
+## Removed
+
+## Other
+
+* egui is updated to 0.34 leading to that the font rendering is improved. Please report if anything looks worse.
+
 ## [0.6.0] - 2026-02-12
 
 ## Added
@@ -285,7 +322,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Initial numbered version
 
 
-[Unreleased]: https://gitlab.com/surfer-project/surfer/-/compare/v0.6.0...main
+[Unreleased]: https://gitlab.com/surfer-project/surfer/-/compare/v0.7.0...main
+[0.7.0]: https://gitlab.com/surfer-project/surfer/-/tree/v0.7.0
 [0.6.0]: https://gitlab.com/surfer-project/surfer/-/tree/v0.6.0
 [0.5.0]: https://gitlab.com/surfer-project/surfer/-/tree/v0.5.0
 [0.4.0]: https://gitlab.com/surfer-project/surfer/-/tree/v0.4.0
