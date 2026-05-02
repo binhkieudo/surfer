@@ -91,6 +91,18 @@ impl SystemState {
     fn draw_statusbar_right(&self, ui: &mut Ui, waves: Option<&WaveData>, msgs: &mut Vec<Message>) {
         if let Some(waves) = waves {
             ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
+                if let Some(time) = &waves.num_timestamps() {
+                    ui.label(format!(
+                        " ({})",
+                        time_string(
+                            time,
+                            &waves.inner.metadata().timescale,
+                            &self.user.wanted_timeunit,
+                            &self.get_time_format(),
+                        )
+                    ))
+                    .context_menu(|ui| timeunit_menu(ui, msgs, &self.user.wanted_timeunit));
+                }
                 if let Some(time) = &waves.cursor {
                     ui.label(time_string(
                         time,
