@@ -54,10 +54,10 @@ fn integer_numeric_range(num_bits: u32, signed: bool) -> Option<NumericRange> {
         return None;
     }
     let (min, max) = if signed {
-        let half = 2.0f64.powi((num_bits - 1) as i32);
+        let half = 2.0f64.powi((num_bits - 1).cast_signed());
         (-half, half - 1.0)
     } else {
-        (0.0, 2.0f64.powi(num_bits as i32) - 1.0)
+        (0.0, 2.0f64.powi(num_bits.cast_signed()) - 1.0)
     };
     // Span must be finite for Y-axis scaling
     (max - min).is_finite().then_some(NumericRange { min, max })

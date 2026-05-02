@@ -1652,7 +1652,7 @@ impl SystemState {
 
                             ui.add_space(waveforms_gap);
                             ui.label(
-                                RichText::new(format!("Δ: {delta}",))
+                                RichText::new(format!("Δ: {delta}"))
                                     .color(
                                         self.user.config.theme.get_best_text_color(backgroundcolor),
                                     )

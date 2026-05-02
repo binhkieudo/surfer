@@ -999,9 +999,10 @@ impl SurferTheme {
             .filter_map(|p| std::fs::read_dir(p.join(THEMES_DIR)).ok())
             .for_each(add_themes_from_dir);
 
-        if matches!(theme_name, Some(ref name) if !name.is_empty()) {
-            let theme_path =
-                Path::new(THEMES_DIR).join(theme_name.as_ref().unwrap().to_owned() + ".toml");
+        if let Some(name) = theme_name.as_ref()
+            && !name.is_empty()
+        {
+            let theme_path = Path::new(THEMES_DIR).join(name.to_owned() + ".toml");
 
             // First filter out all the existing local themes and add them in the aforementioned
             // order.

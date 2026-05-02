@@ -62,7 +62,7 @@ pub(crate) fn modification_time_string(mtime: Option<SystemTime>) -> String {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
         return chrono::DateTime::<chrono::Utc>::from_timestamp(
-            dur.as_secs() as i64,
+            dur.as_secs().cast_signed(),
             dur.subsec_nanos(),
         )
         .map_or_else(
