@@ -636,6 +636,7 @@ impl SystemState {
                         && let Some(item_ref) = item_ref
                     {
                         waves.remove_displayed_item(item_ref);
+                        waves.compute_variable_display_names();
                     }
                 }
                 MessageTarget::CurrentSelection => {
@@ -656,6 +657,7 @@ impl SystemState {
                     for &item_ref in &remove_ids {
                         waves.remove_displayed_item(item_ref);
                     }
+                    waves.compute_variable_display_names();
                 }
             },
             Message::RemoveItems(items) => {
