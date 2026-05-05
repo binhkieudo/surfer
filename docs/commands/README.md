@@ -205,6 +205,10 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 
   Center the view at the given time without moving the cursor. ``TIME`` can be a plain integer (raw timescale ticks) or a value with a time unit, e.g. ``100ns``, ``1.5 ms``, ``2us``.
 
+* ``zoom_to <START_TIME> <END_TIME>``
+
+  Zoom the view to the given time range. ``START_TIME`` and ``END_TIME`` can be plain integers (raw timescale ticks) or values with a time unit, e.g. ``100ns``, ``1.5 ms``, ``2us``.
+
 * ``transition_next``
 
   Move cursor to next transition of focused item. Scroll if not visible.
