@@ -301,6 +301,10 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 
   Add/set marker to location of cursor.
 
+* ``marker_set_at <TIME> <MARKER_NAME> | #<MARKER_NUMBER>``
+
+  Add/set marker at the given time. ``TIME`` can be a plain integer (raw timescale ticks) or a value with a time unit, e.g. ``100ns``, ``1.5 ms``, ``2us``.
+
 * ``marker_remove <MARKER_NAME> | #<MARKER_NUMBER>``
 
   Remove marker.

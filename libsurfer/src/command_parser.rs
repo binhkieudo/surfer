@@ -321,6 +321,7 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
             "cursor_set",
             "goto_time",
             "marker_set",
+            "marker_set_at",
             "marker_remove",
             "show_marker_window",
             "viewport_add",
@@ -1033,6 +1034,54 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
                         ))
                     }),
                 )),
+                "marker_set_at" => {
+                    let timescale_for_marker_set_at = timescale.clone();
+                    Some(Command::NonTerminal(
+                        ParamGreed::Rest,
+                        vec![],
+                        Box::new(move |query, _| {
+                            let parts = query.split_whitespace().collect_vec();
+                            if parts.len() < 2 {
+                                return None;
+                            }
+
+                            let (time_str, marker_ref) = if parts.len() >= 3 {
+                                let combined = format!("{}{}", parts[0], parts[1]);
+                                if let Some(ts) = &timescale_for_marker_set_at {
+                                    if crate::time::parse_time_string_to_ticks(&combined, ts)
+                                        .is_some()
+                                    {
+                                        (combined, parts[2..].join(" "))
+                                    } else {
+                                        (parts[0].to_string(), parts[1..].join(" "))
+                                    }
+                                } else {
+                                    (parts[0].to_string(), parts[1..].join(" "))
+                                }
+                            } else {
+                                (parts[0].to_string(), parts[1].to_string())
+                            };
+
+                            let time = if let Some(ts) = &timescale_for_marker_set_at {
+                                crate::time::parse_time_string_to_ticks(&time_str, ts)?
+                            } else {
+                                time_str.parse().ok()?
+                            };
+
+                            let marker_id = parse_marker(&marker_ref, &markers);
+                            match marker_id {
+                                Some(id) => {
+                                    Some(Command::Terminal(Message::SetMarker { id, time }))
+                                }
+                                None => Some(Command::Terminal(Message::AddMarker {
+                                    time,
+                                    name: Some(marker_ref),
+                                    move_focus: true,
+                                })),
+                            }
+                        }),
+                    ))
+                }
                 "marker_remove" => Some(Command::NonTerminal(
                     ParamGreed::Rest,
                     marker_suggestions(&markers),
