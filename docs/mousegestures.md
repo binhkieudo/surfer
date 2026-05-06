@@ -1,6 +1,6 @@
 # Mouse gestures
 
-Surfer supports mouse gestured. These are activated using the middle mouse button, or if the middle mouse button is not available, but pressing Ctrl (Cmd on MacOS) and using the primary mouse button.
+Surfer supports mouse gestured. These are activated using the middle mouse button. They can also be activated by pressing Ctrl (Cmd on MacOS) and using the primary mouse button.
 
 If the mouse pointer is close to the location where it was pressed, a graphical overlay showing the different gestures is shown.
 

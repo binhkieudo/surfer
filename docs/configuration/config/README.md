@@ -87,6 +87,8 @@ Controls the initial UI layout and waveform rendering behavior.
 | `parameter_display_location` | `"Scopes"` | `Variables`, `Scopes`, `Tooltips`, `None` | Where parameter values are displayed in the hierarchy UI. |
 | `window_width` | `1920` | integer | Initial window width in pixels. |
 | `window_height` | `1080` | integer | Initial window height in pixels. |
+| `window_x_position` | `0` | integer | Initial window x-position in pixels. |
+| `window_y_position` | `0` | integer | Initial window y-position in pixels. |
 | `align_names_right` | `false` | boolean | Right-align names in the item list. |
 | `hierarchy_style` | `"Separate"` | `Separate`, `Tree`, `Variables` | Layout style used for the hierarchy and variable list. |
 | `waveforms_text_size` | `11.0` | non-negative number | Text size for waveform values, in points. |

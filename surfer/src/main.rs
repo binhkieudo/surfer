@@ -97,6 +97,7 @@ mod main_impl {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn main() -> Result<()> {
+        use egui::Pos2;
         use libsurfer::state::UserState;
         #[cfg(feature = "wasm_plugins")]
         use libsurfer::translation::wasm_translator::discover_wasm_translators;
@@ -228,6 +229,10 @@ mod main_impl {
                 .with_inner_size(Vec2::new(
                     state.user.config.layout.window_width as f32,
                     state.user.config.layout.window_height as f32,
+                ))
+                .with_position(Pos2::new(
+                    state.user.config.layout.window_x_position as f32,
+                    state.user.config.layout.window_y_position as f32,
                 )),
             ..Default::default()
         };

@@ -221,6 +221,10 @@ pub struct SurferLayout {
     pub window_height: usize,
     /// Initial window width
     pub window_width: usize,
+    /// Initial window x-position
+    pub window_x_position: usize,
+    /// Initial window y-position
+    pub window_y_position: usize,
     /// Align variable names right
     align_names_right: bool,
     /// Set style of hierarchy
