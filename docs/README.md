@@ -53,17 +53,13 @@ Some Linux distributions have Surfer available as a package to be installed thro
 
 #### `surfer`
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/surfer.svg)](https://repology.org/project/surfer/versions)
+[![Packaging status](https://repology.org/badge/vertical-allrepos/surfer-waveform-viewer.svg)](https://repology.org/project/surfer-waveform-viewer/versions)
 
-Note that some of the packages, like the one for openSuse, is a completely different program though.
+Click the table to see the exact package name, which varies between distributions.
 
 For macOS (also included in the table above), Homebrew has a [formulae](https://formulae.brew.sh/formula/surfer).
 
 For at least Spack and Homebrew, it is also possible to install the latest git version. Click the table above to get more information.
-
-#### `surfer-waveform`
-
-[![Packaging status](https://repology.org/badge/vertical-allrepos/surfer-waveform.svg)](https://repology.org/project/surfer-waveform/versions)
 
 #### Latest version from Gitlab
 

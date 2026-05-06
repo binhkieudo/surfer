@@ -6,16 +6,6 @@ It is also possible to create a command file, extension `.sucl`, and run that. R
 
 Not all commands are available unless a file is loaded. Also, some commands are not available in the WASM-build (browser/VS Code extension).
 
-## Surver (streaming waveform server)
-
-* ``surver_select_file <FILE_NAME>``
-
-  Load a file from the connected Surver instance, discarding the current waveform view.
-
-* ``surver_switch_file <FILE_NAME>``
-
-  Load a file from the connected Surver instance, keeping the current waveform view.
-
 ## Waveform/transaction loading and reloading
 
 * ``load_file <FILE_NAME>``
@@ -40,32 +30,6 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 * ``remove_unavailable``
 
     Remove variables that are not longer present in the reloaded/switched file.
-
-## State files
-
-* ``load_state <FILE_NAME>``
-
-  Load a previously saved state file.
-
-* ``save_state``
-
-  Save the current state to the default state file.
-
-* ``save_state_as <FILE_NAME>``
-
-  Save the current state to the given file.
-
-## Command files
-
-* ``run_command_file <FILE_NAME>`` (not on WASM)
-
-    Run the commands in the given file.
-
-    <div class="warning">In WASM-builds (web browser/VS Code plugin) it is not possible to run another command file from a command file due to file access restrictions.</div>
-
-* ``run_command_file_from_url <URL>``
-
-    Run the commands at the given URL.
 
 ## Add variable/transaction items
 
@@ -353,16 +317,6 @@ Not all commands are available unless a file is loaded. Also, some commands are 
   frame_buffer_set_range 0 479 0 639
   ```
 
-## Interactive simulation
-
-* ``pause_simulation``
-
-  Pause a running simulation.
-
-* ``unpause_simulation``
-
-  Resume a paused simulation.
-
 ## Viewports
 
 * ``viewport_add``
@@ -372,6 +326,42 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 * ``viewport_remove``
 
   Remove the most recently added viewport.
+
+## State files
+
+* ``load_state <FILE_NAME>``
+
+  Load a previously saved state file.
+
+* ``save_state``
+
+  Save the current state to the default state file.
+
+* ``save_state_as <FILE_NAME>``
+
+  Save the current state to the given file.
+
+## Command files
+
+* ``run_command_file <FILE_NAME>`` (not on WASM)
+
+    Run the commands in the given file.
+
+    <div class="warning">In WASM-builds (web browser/VS Code plugin) it is not possible to run another command file from a command file due to file access restrictions.</div>
+
+* ``run_command_file_from_url <URL>``
+
+    Run the commands at the given URL.
+
+## Surver (streaming waveform server)
+
+* ``surver_select_file <FILE_NAME>``
+
+  Load a file from the connected Surver instance, discarding the current waveform view.
+
+* ``surver_switch_file <FILE_NAME>``
+
+  Load a file from the connected Surver instance, keeping the current waveform view.
 
 ## Waveform control protocol (WCP)
 
@@ -402,6 +392,16 @@ Not all commands are available unless a file is loaded. Also, some commands are 
 * ``exit`` (not WASM)
 
   Exit Surfer.
+
+## Interactive simulation
+
+* ``pause_simulation``
+
+  Pause a running simulation.
+
+* ``unpause_simulation``
+
+  Resume a paused simulation.
 
 ## Debugging
 
