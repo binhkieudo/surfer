@@ -5,7 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::{arrow::WavePoint, graphics::Anchor};
 use base64::{Engine, engine::general_purpose};
+use egui::{Pos2, Rect};
 use egui_skia_renderer::{EncodedImageFormat, create_surface, draw_onto_surface};
 use emath::Vec2;
 use ftr_parser::types::{GeneratorId, StreamId, TransactionId};
@@ -22,7 +24,7 @@ use crate::{
     config::{SurferConfig, TransitionValue},
     displayed_item::{DisplayedFieldRef, DisplayedItemRef},
     displayed_item_tree::VisibleItemIndex,
-    graphics::{Direction, GrPoint, Graphic, GraphicId},
+    graphics::{Direction, GrPoint, Graphic, GraphicId, GraphicsY},
     hierarchy::{HierarchyStyle, ParameterDisplayLocation, ScopeExpandType},
     message::MessageTarget,
     setup_custom_font,
@@ -833,6 +835,52 @@ snapshot_ui_with_file_and_msgs! {delete_markers_via_item, "examples/counter.vcd"
     Message::AddMarker{time: 200.into(), name: None, move_focus: true},
     Message::RemoveVisibleItems(MessageTarget::Explicit(VisibleItemIndex(1))),
     Message::RemoveVisibleItems(MessageTarget::Explicit(VisibleItemIndex(1))),
+]}
+
+snapshot_ui_with_file_and_msgs! {add_annotation, "examples/counter.vcd", [
+    Message::AddScope(ScopeRef::from_strs(&["tb"]), false),
+    Message::RectangleAdded { time_at_start: BigInt::from(300), time_at_end: BigInt::from(500), wave_from: Some(GraphicsY {
+        item: DisplayedItemRef(2),
+        anchor: Anchor::Top,
+        p: None,
+    }), wave_to: Some(GraphicsY {
+        item: DisplayedItemRef(3),
+        anchor: Anchor::Bottom,
+        p: None,
+    }), rect: Rect::ZERO },
+    Message::ArrowAdded { wave_point_from: WavePoint{
+        time: BigInt::from(100),
+        attached_item: Some(DisplayedItemRef(3)),
+        screen_pos: Pos2::new(0., 0.),
+    }, wave_point_to: WavePoint{
+        time: BigInt::from(200),
+        attached_item: Some(DisplayedItemRef(3)),
+        screen_pos: Pos2::new(0., 0.)}, head_mode: crate::arrow::ArrowHeadMode::End },
+    Message::ArrowAdded { wave_point_from: WavePoint{
+        time: BigInt::from(100),
+        attached_item: Some(DisplayedItemRef(1)),
+        screen_pos: Pos2::new(0., 0.),
+    }, wave_point_to: WavePoint{
+        time: BigInt::from(200),
+        attached_item: Some(DisplayedItemRef(1)),
+        screen_pos: Pos2::new(0., 0.)}, head_mode: crate::arrow::ArrowHeadMode::Double },
+]}
+
+snapshot_ui_with_file_and_msgs! {annotation_list_works, "examples/counter.vcd", [
+    Message::AddScope(ScopeRef::from_strs(&["tb"]), false),
+    Message::RectangleAdded { time_at_start: BigInt::from(300), time_at_end: BigInt::from(500), wave_from: Some(GraphicsY {
+        item: DisplayedItemRef(2),
+        anchor: Anchor::Top,
+        p: None,
+    }), wave_to: Some(GraphicsY {
+        item: DisplayedItemRef(3),
+        anchor: Anchor::Bottom,
+        p: None,
+    }), rect: Rect::ZERO },
+    Message::ToggleAnnotationlistVisibility(),
+    Message::CreateAnnotationGroup("test".to_string()),
+    Message::CreateAnnotationGroup("test2".to_string()),
+    Message::DeleteAnnotationGroup("test2".to_string()),
 ]}
 
 snapshot_ui_with_file_and_msgs! {

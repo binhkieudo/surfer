@@ -21,8 +21,6 @@ pub struct Comment {
     pub name: String,
     pub visible: bool,
     pub message_id_source: u64,
-
-    //#[serde(skip)]
     pub message_chain: Vec<CommentMessage>,
     pub new_text: String,
     pub save_text: Option<String>,
@@ -37,7 +35,7 @@ impl Comment {
             color: egui::Color32::WHITE,
             offset: Pos2::ZERO,
             anchor: Pos2::ZERO,
-            size: Pos2 { x:100., y: 50. },
+            size: Pos2 { x: 100., y: 50. },
             message_chain: Vec::new(),
             new_text: String::from(""),
             name: String::from(""),
@@ -56,11 +54,10 @@ impl egui::Widget for &mut Comment {
         let mut layout_rect = self.rect;
         layout_rect.set_height(2000.0);
 
-        // Scope the UI to this specific rectangle so child elements align correctly
+        // Scope the UI to the specific rectangle so child elements align correctly
         let inner = ui.scope_builder(egui::UiBuilder::new().max_rect(layout_rect), |ui| {
             let line_start = self.rect.left_top();
 
-            // Connector Line
             // Draw a dashed line from the comment box to the target it's referencing
             ui.painter().add(egui::Shape::dashed_line(
                 &[line_start, self.anchor],
@@ -152,12 +149,12 @@ impl egui::Widget for &mut Comment {
                 });
             });
 
-            // Size Syn
+            // Size Sync
             // Calculate how much space the UI actually took up
             let final_rect = ui.min_rect();
             let content_height = final_rect.height();
 
-            // Auto-expand the saved height if the content grows (e.g. adding messages)
+            // Auto-expand the saved height if the content grows (adding messages)
             if self.size.y < content_height {
                 self.size.y = content_height;
             }
@@ -180,8 +177,8 @@ impl egui::Widget for &mut Comment {
                 ),
             );
 
+            // TODO: Resize temporary turned off
             // Interaction Logic (Resize & Drag)
-
             // Define a small interactive handle in the bottom-right corner for resizing
             let handle_rect = egui::Rect::from_min_max(
                 background_rect.max - egui::vec2(15.0, 15.0),
@@ -195,7 +192,7 @@ impl egui::Widget for &mut Comment {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
             }
 
-            // Draw a small icon to indicate the resize handle
+            // Draw a small icon to indicate the move handle
             ui.painter().text(
                 handle_rect.center(),
                 egui::Align2::CENTER_CENTER,

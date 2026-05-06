@@ -17,7 +17,7 @@ const GAMMA_FACTOR: f32 = 1.1;
 const WIDTH_FACTOR: f32 = 1.3;
 const HITBOX_SIZE: f32 = 4.0;
 const HEAD_LEN_FACTOR: f32 = 5.0;
-const HEAD_WIDTH_FACTOR:f32 = 3.0;
+const HEAD_WIDTH_FACTOR: f32 = 3.0;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ArrowHeadMode {
@@ -429,9 +429,7 @@ impl ArrowAnnotation {
             }
 
             if best <= radius { Some(best) } else { None }
-        }
-
-        else{
+        } else {
             let seg = self.segments()?;
             let hit_radius = self.hit_radius();
 
@@ -458,14 +456,14 @@ impl ArrowAnnotation {
         }
     }
 
-    fn paint_arrow_head(&self, ui: &mut Ui, tip: Pos2, left: Pos2, right: Pos2){
+    fn paint_arrow_head(&self, ui: &mut Ui, tip: Pos2, left: Pos2, right: Pos2) {
         ui.painter()
             .line_segment([tip, left], self.annotation_data.stroke);
         ui.painter()
             .line_segment([tip, right], self.annotation_data.stroke);
         ui.painter()
             .line_segment([left, right], self.annotation_data.stroke);
-        }
+    }
 
     // Returns arrow end_position in global coordinates
     pub fn get_pos(
@@ -491,7 +489,8 @@ impl Widget for ArrowAnnotation {
         // The widget does custom painting and uses explicit hit detection elsewhere,
         // so it only allocates an empty egui response here.
         let _response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::empty());
-            if !self.is_visible() {
+        if !self.is_visible() {
+            self.hide_annotation(ui, self.annotation_data.stroke, self.to.screen_pos);
 
             if let ArrowHeadMode::Double = self.head_mode {
                 self.hide_annotation(ui, self.annotation_data.stroke, self.from.screen_pos);

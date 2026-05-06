@@ -83,10 +83,7 @@ impl RectAnnotation {
 
     //Find the correct y_positions for the rectangle. If the "p" value is none, it means we have a snapped value
     //and make sure to anchor them correctly.
-    fn resolve_y_positions(
-        &mut self,
-        waves: &WaveData,
-    ) -> (Option<f32>, Option<f32>) {
+    fn resolve_y_positions(&mut self, waves: &WaveData) -> (Option<f32>, Option<f32>) {
         let mut from_y = calculate_y(self.from.wave.as_ref(), waves);
         let mut to_y = calculate_y(self.to.wave.as_ref(), waves);
 
@@ -108,7 +105,7 @@ impl RectAnnotation {
         (from_y, to_y)
     }
 
-    //Calculate the correct position of the rectangle on to the canvas.
+    /// Calculate the correct position of the rectangle on to the canvas.
     fn compute_rect(
         &mut self,
         from_y: f32,
@@ -123,16 +120,20 @@ impl RectAnnotation {
         let num_timestamps = waves.safe_num_timestamps();
 
         //Update size and coloring from theme and whether it selected or not
-        self.annotation_data.stroke = Stroke::new( theme.annotation_rectangle.width, theme.annotation_rectangle.color, );
-         if waves.selected_annotation == Some(self.get_id()) { 
-            self.is_selected(); 
+        self.annotation_data.stroke = Stroke::new(
+            theme.annotation_rectangle.width,
+            theme.annotation_rectangle.color,
+        );
+        if waves.selected_annotation == Some(self.get_id()) {
+            self.is_selected();
         }
 
-        //y_offset adjusts positioning whether the default timeline is shown or not.
+        // y_offset adjusts positioning whether the default timeline is shown or not.
         let min_y = from_y.min(to_y) + y_offset;
         let max_y = from_y.max(to_y) + y_offset;
 
-        let min_x = viewport.pixel_from_time(&self.from.time, ctx.cfg.canvas_size.x, &num_timestamps);
+        let min_x =
+            viewport.pixel_from_time(&self.from.time, ctx.cfg.canvas_size.x, &num_timestamps);
         let max_x = viewport.pixel_from_time(&self.to.time, ctx.cfg.canvas_size.x, &num_timestamps);
 
         self.rect = Rect {
@@ -140,7 +141,6 @@ impl RectAnnotation {
             max: (ctx.to_screen)(max_x, max_y),
         }
     }
-
 }
 
 pub(crate) fn calculate_y(wave: Option<&GraphicsY>, waves: &WaveData) -> Option<f32> {
@@ -211,7 +211,7 @@ impl Annotatable for RectAnnotation {
     fn is_visible(&self) -> bool {
         self.annotation_data.visible
     }
-    //fn toggle_visibility(&mut self);
+
     fn get_center_time(&self) -> BigInt {
         (&self.from.time + &self.to.time) / 2
     }
@@ -250,7 +250,15 @@ impl Annotatable for RectAnnotation {
         if let Some(to_y) = to_y
             && let Some(from_y) = from_y
         {
-            rectangle_annotation.compute_rect(from_y, to_y, waves, ctx, viewport_idx, theme, y_offset);
+            rectangle_annotation.compute_rect(
+                from_y,
+                to_y,
+                waves,
+                ctx,
+                viewport_idx,
+                theme,
+                y_offset,
+            );
 
             let hover_start_time = time_formatter.format(&self.from.time);
             let hover_end_time = time_formatter.format(&self.to.time);
@@ -295,7 +303,7 @@ impl Annotatable for RectAnnotation {
     }
 }
 
-//Creates an outer and inner rectangle, used to identifiy whether the annotation was clicked on.
+/// Creates an outer and inner rectangle, used to identify whether the annotation was clicked on.
 fn point_on_rect_border(p: emath::Pos2, rect: Rect, width: f32) -> (bool, Rect) {
     let half_width: f32 = width * HITBOX_SIZE_FACTOR;
     let outer_rect = Rect {
@@ -333,8 +341,8 @@ impl Widget for RectAnnotation {
                 self.annotation_data.stroke,
                 egui::StrokeKind::Middle,
             );
-            //always draw the rectangle but if we are on border we should also register clicks
-            //this allows the click to be transferred unto the underlying panel so the rectangle is hollow
+            // Always draw the rectangle but if we are on border we should also register clicks.
+            // This allows the click to be transferred unto the underlying panel so the rectangle is hollow
             let (on_border, hitbox) = ui
                 .ctx()
                 .pointer_hover_pos()

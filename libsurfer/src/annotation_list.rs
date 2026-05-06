@@ -46,12 +46,16 @@ impl WaveData {
             ui.label("Your annotations will be displayed here.");
         });
 
-        ui.add_space(DEFAULT_SPACE*2.);
+        ui.add_space(DEFAULT_SPACE * 2.);
         ui.separator();
 
-        // --- Create Group UI (Using egui Temp Memory)
-        ui.label(egui::RichText::new("Manage Groups").small().strong());
+        // Create Group UI (Using egui Temp Memory)
         ui.horizontal(|ui| {
+            ui.add_space(DEFAULT_SPACE * 2.);
+            ui.label(egui::RichText::new("Manage Groups").small().strong());
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(DEFAULT_SPACE * 2.);
             let input_id = ui.make_persistent_id("group_input_buffer");
             let mut buffer = ui.data_mut(|d| d.get_temp::<String>(input_id).unwrap_or_default());
 
@@ -61,7 +65,7 @@ impl WaveData {
                     .desired_width(ui.available_width() - 160.0),
             );
 
-            // handle focusing of the text area when user clicks elsewhere, enables shortcuts.
+            // Handle focusing of the text area when user clicks elsewhere, enables shortcuts.
             let focus_id = ui.make_persistent_id("group_input_focus_init");
             let has_focused = ui.data_mut(|d| d.get_temp::<bool>(focus_id).unwrap_or(false));
 
@@ -72,7 +76,7 @@ impl WaveData {
 
             ui.data_mut(|d| d.insert_temp(input_id, buffer.clone()));
 
-            // create group when user press enter
+            // Create group when user press enter
             if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) {
                 if !buffer.is_empty() {
                     msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
@@ -82,7 +86,7 @@ impl WaveData {
                 }
             }
 
-            // create group when user press plus button
+            // Create group when user press plus button
             if ui
                 .button(icons::ADD_LINE)
                 .on_hover_text("Create Group")
@@ -94,7 +98,7 @@ impl WaveData {
                 }
             }
 
-            // delete group when user press plus button
+            // Delete group when user press plus button
             if ui
                 .button(icons::DELETE_BIN_LINE)
                 .on_hover_text("Delete Group")
@@ -110,7 +114,7 @@ impl WaveData {
         ui.add_space(DEFAULT_SPACE);
         ui.separator();
 
-        // --- Scrollable List ---
+        // Scrollable List
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
@@ -206,7 +210,7 @@ impl WaveData {
                     ui.horizontal(|ui| {
                         ui.add_space(6.0);
 
-                        // Editable Name Logic
+                        // Editable name logic
                         let editing_id = ui.make_persistent_id(("editing_name", annotation_id));
                         let is_editing =
                             ui.data(|d| d.get_temp::<bool>(editing_id).unwrap_or(false));

@@ -20,7 +20,6 @@ use crate::CachedDrawData::TransactionDrawData;
 use crate::analog_renderer::{AnalogDrawingCommand, variable_analog_draw_commands};
 use crate::clock_highlighting::draw_clock_edge_marks;
 use crate::config::SurferTheme;
-//use crate::comment::Comment;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     AnalogSettings, DisplayedFieldRef, DisplayedItemRef, DisplayedVariable,

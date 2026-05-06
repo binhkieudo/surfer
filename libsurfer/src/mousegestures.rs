@@ -188,10 +188,31 @@ impl SystemState {
         if distance.length_sq() >= self.user.config.gesture.deadzone {
             match self.annotation_kind {
                 Some(AnnotationKind::Rectangle) => {
-                    self.create_rectangle(end_location, start_location, msgs, viewport_idx, waves, &num_timestamps, frame_width, ctx, ui, y_offset);
+                    self.create_rectangle(
+                        end_location,
+                        start_location,
+                        msgs,
+                        viewport_idx,
+                        waves,
+                        &num_timestamps,
+                        frame_width,
+                        ctx,
+                        ui,
+                        y_offset,
+                    );
                 }
                 Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
-                    self.create_arrow(end_location, start_location, msgs, viewport_idx, waves, &num_timestamps, frame_width, ctx, y_offset);
+                    self.create_arrow(
+                        end_location,
+                        start_location,
+                        msgs,
+                        viewport_idx,
+                        waves,
+                        &num_timestamps,
+                        frame_width,
+                        ctx,
+                        y_offset,
+                    );
                 }
                 _ => {
                     match gesture_type(self.user.config.gesture.mapping, distance) {
@@ -259,7 +280,14 @@ impl SystemState {
         if distance.length_sq() >= self.user.config.gesture.deadzone {
             match self.annotation_kind {
                 Some(AnnotationKind::Rectangle) => {
-                    self.draw_gesture_rectangle(start_location, waves, ui, current_location, ctx, y_offset);
+                    self.draw_gesture_rectangle(
+                        start_location,
+                        waves,
+                        ui,
+                        current_location,
+                        ctx,
+                        y_offset,
+                    );
                 }
                 Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
                     self.draw_arrow_line(start_location, current_location, "Add arrow", true, ctx);
@@ -331,7 +359,15 @@ impl SystemState {
         }
     }
 
-    fn draw_gesture_rectangle(&self, start_location: Pos2, waves: &WaveData, ui: &Context, current_location: Pos2, ctx: &mut DrawingContext, y_offset: f32) {
+    fn draw_gesture_rectangle(
+        &self,
+        start_location: Pos2,
+        waves: &WaveData,
+        ui: &Context,
+        current_location: Pos2,
+        ctx: &mut DrawingContext,
+        y_offset: f32,
+    ) {
         let modifiers = ui.input(|i| i.modifiers);
         let max_y = waves.get_content_height(ctx);
         let current_anchor = {
@@ -381,7 +417,8 @@ impl SystemState {
             .rect_stroke(temp_rect, 0.0, stroke, egui::StrokeKind::Middle);
     }
 
-    fn create_rectangle(&self,
+    fn create_rectangle(
+        &self,
         end_location: Pos2,
         start_location: Pos2,
         msgs: &mut Vec<Message>,
@@ -391,7 +428,8 @@ impl SystemState {
         frame_width: f32,
         ctx: &mut DrawingContext<'_>,
         ui: &Context,
-        y_offset: f32,){
+        y_offset: f32,
+    ) {
         let modifiers = ui.input(|i| i.modifiers);
         let max_y = waves.get_content_height(ctx);
 
@@ -462,9 +500,13 @@ impl SystemState {
         };
 
         let (wave_from, wave_to) = if modifiers.shift {
-            let from = get_percentual_y(start.y.min(end.y) - y_offset , start.y.min(end.y)- y_offset);
+            let from =
+                get_percentual_y(start.y.min(end.y) - y_offset, start.y.min(end.y) - y_offset);
 
-            let to = get_percentual_y(end.y.max(start.y) - y_offset - self.user.config.layout.waveforms_gap * 2., end.y.max(start.y) - y_offset);
+            let to = get_percentual_y(
+                end.y.max(start.y) - y_offset - self.user.config.layout.waveforms_gap * 2.,
+                end.y.max(start.y) - y_offset,
+            );
 
             (from, to)
         } else {
@@ -492,7 +534,8 @@ impl SystemState {
         });
     }
 
-    fn create_arrow(&self,
+    fn create_arrow(
+        &self,
         end_location: Pos2,
         start_location: Pos2,
         msgs: &mut Vec<Message>,
@@ -501,7 +544,8 @@ impl SystemState {
         num_timestamps: &BigInt,
         frame_width: f32,
         ctx: &mut DrawingContext<'_>,
-        offset: f32,){
+        offset: f32,
+    ) {
         let start_pos = (ctx.to_screen)(start_location.x, start_location.y);
         let end_pos = (ctx.to_screen)(end_location.x, end_location.y);
 
@@ -531,8 +575,6 @@ impl SystemState {
         if self.annotation_kind == Some(AnnotationKind::ArrowDoubleHead) {
             head_mode = ArrowHeadMode::Double;
         };
-
-        println!("Mode: {:?}", head_mode);
 
         let wave_point_from = WavePoint {
             time: time_from.clone(),

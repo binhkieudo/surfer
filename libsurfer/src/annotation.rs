@@ -474,13 +474,7 @@ impl WaveData {
                 menu_position = (ctx.to_screen)(menu_position.x, menu_position.y);
                 menu_position.y = temp_y;
 
-                annotation.draw_quick_menu(
-                    ui,
-                    msgs,
-                    &self,
-                    viewport_rect,
-                    menu_position,
-                );
+                annotation.draw_quick_menu(ui, msgs, &self, viewport_rect, menu_position);
             }
         }
         for annotation in &self.annotations {
