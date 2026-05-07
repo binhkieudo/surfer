@@ -29,8 +29,8 @@ pub struct Comment {
 impl Comment {
     pub(crate) fn new(id: egui::Id, annotation_id: egui::Id) -> Self {
         Comment {
-            id: id,
-            annotation_id: annotation_id,
+            id,
+            annotation_id,
             rect: egui::Rect::ZERO,
             color: egui::Color32::WHITE,
             offset: Pos2::ZERO,
@@ -244,4 +244,3 @@ impl egui::Widget for &mut Comment {
         inner.inner
     }
 }
-

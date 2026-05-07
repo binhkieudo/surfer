@@ -842,11 +842,9 @@ snapshot_ui_with_file_and_msgs! {add_annotation, "examples/counter.vcd", [
     Message::RectangleAdded { time_at_start: BigInt::from(300), time_at_end: BigInt::from(500), wave_from: Some(GraphicsY {
         item: DisplayedItemRef(2),
         anchor: Anchor::Top,
-        p: None,
     }), wave_to: Some(GraphicsY {
         item: DisplayedItemRef(3),
         anchor: Anchor::Bottom,
-        p: None,
     }), rect: Rect::ZERO },
     Message::ArrowAdded { wave_point_from: WavePoint{
         time: BigInt::from(100),
@@ -871,11 +869,9 @@ snapshot_ui_with_file_and_msgs! {annotation_list_works, "examples/counter.vcd", 
     Message::RectangleAdded { time_at_start: BigInt::from(300), time_at_end: BigInt::from(500), wave_from: Some(GraphicsY {
         item: DisplayedItemRef(2),
         anchor: Anchor::Top,
-        p: None,
     }), wave_to: Some(GraphicsY {
         item: DisplayedItemRef(3),
         anchor: Anchor::Bottom,
-        p: None,
     }), rect: Rect::ZERO },
     Message::ToggleAnnotationlistVisibility(),
     Message::CreateAnnotationGroup("test".to_string()),

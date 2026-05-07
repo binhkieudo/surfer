@@ -66,16 +66,21 @@ pub struct WaveData {
     pub viewports: Vec<Viewport>,
     pub cursor: Option<BigInt>,
     pub markers: HashMap<u8, BigInt>,
+    #[serde(default)]
     pub selected_annotation: Option<Id>,
 
+    #[serde(default)]
     pub annotations: Vec<Annotation>,
     #[serde(default)]
     pub annotation_groups: Vec<String>, // List of unique annotation group names
     #[serde(default)]
     pub annotation_list_visible: bool,
+    #[serde(default)]
     pub annotation_counter: i32,
     pub last_active_viewport_idx: usize,
+    #[serde(skip, default)]
     pub(crate) annotation_menu_pos: Option<Pos2>,
+    #[serde(skip, default)]
     pub annotation_menu_time: Option<BigInt>,
 
     pub focused_item: Option<VisibleItemIndex>,

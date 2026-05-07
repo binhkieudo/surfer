@@ -2,14 +2,8 @@ use crate::{Message, annotation::Annotatable, time::TimeFormatter, wave_data::Wa
 use egui::{Align, Color32, Key, Layout, Ui};
 use egui_remixicon::icons;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AnnotationList {}
-
-impl Default for AnnotationList {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 const DEFAULT_GROUP_NAME: &str = "Ungrouped";
 const TIME_FONT_SIZE: f32 = 11.;
@@ -77,13 +71,11 @@ impl WaveData {
             ui.data_mut(|d| d.insert_temp(input_id, buffer.clone()));
 
             // Create group when user press enter
-            if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) {
-                if !buffer.is_empty() {
-                    msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
-                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                    // Keep focus here so users can type the next group immediately
-                    text_edit_res.request_focus();
-                }
+            if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) && !buffer.is_empty() {
+                msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
+                ui.data_mut(|d| d.insert_temp(input_id, String::new()));
+                // Keep focus here so users can type the next group immediately
+                text_edit_res.request_focus();
             }
 
             // Create group when user press plus button
@@ -91,11 +83,10 @@ impl WaveData {
                 .button(icons::ADD_LINE)
                 .on_hover_text("Create Group")
                 .clicked()
+                && !buffer.is_empty()
             {
-                if !buffer.is_empty() {
-                    msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
-                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                }
+                msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
+                ui.data_mut(|d| d.insert_temp(input_id, String::new()));
             }
 
             // Delete group when user press plus button
@@ -103,11 +94,10 @@ impl WaveData {
                 .button(icons::DELETE_BIN_LINE)
                 .on_hover_text("Delete Group")
                 .clicked()
+                && !buffer.is_empty()
             {
-                if !buffer.is_empty() {
-                    msgs.push(Message::DeleteAnnotationGroup(buffer.trim().to_string()));
-                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
-                }
+                msgs.push(Message::DeleteAnnotationGroup(buffer.trim().to_string()));
+                ui.data_mut(|d| d.insert_temp(input_id, String::new()));
             }
         });
 
@@ -177,16 +167,15 @@ impl WaveData {
 
                 // Push everything else to the right
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if display_name != DEFAULT_GROUP_NAME.to_string() {
-                        if ui
+                    if display_name != DEFAULT_GROUP_NAME
+                        && ui
                             .button(icons::DELETE_BIN_LINE)
                             .on_hover_text("Delete all annotations in this group")
                             .clicked()
-                        {
-                            msgs.push(Message::DeleteAllAnnotationInGroup(
-                                group_filter.clone().unwrap_or("".to_string()),
-                            ));
-                        }
+                    {
+                        msgs.push(Message::DeleteAllAnnotationInGroup(
+                            group_filter.clone().unwrap_or("".to_string()),
+                        ));
                     }
                     if ui
                         .button(group_icon)
@@ -388,7 +377,10 @@ impl WaveData {
                                     );
 
                                     if response.on_hover_text("Delete message").clicked() {
-                                        msgs.push(Message::RemoveCommentMessage(annotation.get_id(), c.id));
+                                        msgs.push(Message::RemoveCommentMessage(
+                                            annotation.get_id(),
+                                            c.id,
+                                        ));
                                     }
                                 });
                             });

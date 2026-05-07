@@ -481,7 +481,7 @@ pub(crate) fn get_parser(state: &SystemState) -> Command<Message> {
                                 if part
                                     .chars()
                                     .next()
-                                    .map_or(false, |c| c.is_numeric() || c == '-')
+                                    .is_some_and(|c| c.is_numeric() || c == '-')
                                 {
                                     let time_str = if i + 1 < parts.len()
                                         && !parts[i + 1].chars().next().unwrap_or('0').is_numeric()

@@ -34,10 +34,10 @@ impl AnnotationData {
         let id = Id::new(id_source);
         let c_id = Id::new(("comment_box", num));
         AnnotationData {
-            id: id.clone(),
+            id,
             group_name: None,
             visible: true,
-            name: name,
+            name,
             stroke: Stroke::new(2.0, Color32::from_rgb(255, 255, 255)),
             show_comments: false,
             comment_box: Comment::new(c_id, id),
@@ -449,7 +449,7 @@ impl WaveData {
         for annotation in &self.annotations {
             annotation.draw(
                 ui,
-                &self,
+                self,
                 viewport_idx,
                 ctx,
                 theme,
@@ -474,7 +474,7 @@ impl WaveData {
                 menu_position = (ctx.to_screen)(menu_position.x, menu_position.y);
                 menu_position.y = temp_y;
 
-                annotation.draw_quick_menu(ui, msgs, &self, viewport_rect, menu_position);
+                annotation.draw_quick_menu(ui, msgs, self, viewport_rect, menu_position);
             }
         }
         for annotation in &self.annotations {
@@ -492,6 +492,5 @@ impl WaveData {
         if !comment_changes.is_empty() {
             msgs.push(Message::UpdateCommentBox(comment_changes));
         }
-        
     }
 }

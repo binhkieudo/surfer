@@ -2446,10 +2446,10 @@ impl SystemState {
             }
 
             Message::SetActiveViewport(idx) => {
-                if let Some(waves) = self.user.waves.as_mut() {
-                    if idx < waves.viewports.len() {
-                        waves.last_active_viewport_idx = idx;
-                    }
+                if let Some(waves) = self.user.waves.as_mut()
+                    && idx < waves.viewports.len()
+                {
+                    waves.last_active_viewport_idx = idx;
                 }
             }
 
@@ -2462,11 +2462,11 @@ impl SystemState {
                     .find(|a| a.get_id() == annotation_id)
                 {
                     println!("gets here");
-                    target.get_comment_box_mut().message_chain
-                            .retain(|comment_message| comment_message.id != message_id);
-
+                    target
+                        .get_comment_box_mut()
+                        .message_chain
+                        .retain(|comment_message| comment_message.id != message_id);
                 }
-
             }
 
             Message::ClickHandled() => {
@@ -2495,7 +2495,7 @@ impl SystemState {
                     let comment = target.get_comment_box_mut();
                     comment.message_chain.push(CommentMessage {
                         id: egui::Id::new(("comment", comment.message_id_source)),
-                        user: user,
+                        user,
                         text: message,
                     });
                     comment.message_id_source += 1;

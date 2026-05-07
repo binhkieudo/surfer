@@ -258,25 +258,23 @@ impl Annotatable for ArrowAnnotation {
             msgs.push(Message::ClickHandled());
         }
 
-        if exact_hovered {
-            if let Some(pointer_pos) = pointer_hover_pos {
-                // Use a tiny hover rectangle at the pointer position to attach egui's
-                // tooltip UI to the actual arrow hit location.
-                let hover_rect = egui::Rect::from_center_size(pointer_pos, egui::vec2(1.0, 1.0));
+        if exact_hovered && let Some(pointer_pos) = pointer_hover_pos {
+            // Use a tiny hover rectangle at the pointer position to attach egui's
+            // tooltip UI to the actual arrow hit location.
+            let hover_rect = egui::Rect::from_center_size(pointer_pos, egui::vec2(1.0, 1.0));
 
-                let hover_response = ui.interact(
-                    hover_rect,
-                    egui::Id::new(("arrow_hover_info", self.annotation_data.id, viewport_idx)),
-                    egui::Sense::hover(),
-                );
+            let hover_response = ui.interact(
+                hover_rect,
+                egui::Id::new(("arrow_hover_info", self.annotation_data.id, viewport_idx)),
+                egui::Sense::hover(),
+            );
 
-                let hover_start_time = time_formatter.format(&self.from.time.clone());
-                let hover_end_time = time_formatter.format(&self.to.time.clone());
+            let hover_start_time = time_formatter.format(&self.from.time.clone());
+            let hover_end_time = time_formatter.format(&self.to.time.clone());
 
-                hover_response.on_hover_ui(|ui| {
-                    self.draw_hover_info(ui, (&hover_start_time, &hover_end_time));
-                });
-            }
+            hover_response.on_hover_ui(|ui| {
+                self.draw_hover_info(ui, (&hover_start_time, &hover_end_time));
+            });
         }
     }
 
@@ -291,10 +289,7 @@ impl Annotatable for ArrowAnnotation {
         let mut x =
             viewport.pixel_from_time(&self.from.time, ctx.cfg.canvas_size.x, &num_timestamps);
         let mut y = match self.to.attached_item.as_ref() {
-            Some(item_ref) => match item_center_y(waves, item_ref) {
-                Some(y) => y,
-                None => 0.,
-            },
+            Some(item_ref) => item_center_y(waves, item_ref).unwrap_or(0.),
             None => 0.,
         };
         match self.head_mode {
@@ -302,10 +297,7 @@ impl Annotatable for ArrowAnnotation {
             ArrowHeadMode::Double => {
                 // For double-headed arrows, place comments near the visual midpoint.
                 let from_y = match self.from.attached_item.as_ref() {
-                    Some(item_ref) => match item_center_y(waves, item_ref) {
-                        Some(y) => y,
-                        None => 0.,
-                    },
+                    Some(item_ref) => item_center_y(waves, item_ref).unwrap_or(0.),
                     None => 0.,
                 };
                 y = (y + from_y) / 2.;
@@ -495,23 +487,21 @@ impl Widget for ArrowAnnotation {
             if let ArrowHeadMode::Double = self.head_mode {
                 self.hide_annotation(ui, self.annotation_data.stroke, self.from.screen_pos);
             }
-        } else {
-            if let Some(seg) = self.segments() {
-                // Paint shaft
-                ui.painter().line_segment(
-                    [seg.shaft_start, seg.shaft_end],
-                    self.annotation_data.stroke,
-                );
+        } else if let Some(seg) = self.segments() {
+            // Paint shaft
+            ui.painter().line_segment(
+                [seg.shaft_start, seg.shaft_end],
+                self.annotation_data.stroke,
+            );
 
-                // Paint arrow head at the end of the arrow
-                self.paint_arrow_head(ui, seg.end_tip, seg.end_left, seg.end_right);
+            // Paint arrow head at the end of the arrow
+            self.paint_arrow_head(ui, seg.end_tip, seg.end_left, seg.end_right);
 
-                // Paint arrow head at the start if it is a doubleheaded arrow.
-                if let (Some(start_tip), Some(start_left), Some(start_right)) =
-                    (seg.start_tip, seg.start_left, seg.start_right)
-                {
-                    self.paint_arrow_head(ui, start_tip, start_left, start_right);
-                }
+            // Paint arrow head at the start if it is a doubleheaded arrow.
+            if let (Some(start_tip), Some(start_left), Some(start_right)) =
+                (seg.start_tip, seg.start_left, seg.start_right)
+            {
+                self.paint_arrow_head(ui, start_tip, start_left, start_right);
             }
         }
         _response

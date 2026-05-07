@@ -832,7 +832,7 @@ impl SystemState {
         }
         let annotation_offset = self.get_annotation_offset(default_timeline_height);
 
-        if !self.annotation_kind.is_none() && response.drag_started_by(PointerButton::Primary) {
+        if self.annotation_kind.is_some() && response.drag_started_by(PointerButton::Primary) {
             let start = ui
                 .input(|i| i.pointer.press_origin())
                 .map(|p| self.transform_pos(to_screen, p, default_timeline_height, false));

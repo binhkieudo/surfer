@@ -94,10 +94,7 @@ impl WaveData {
             .iter_visible()
             .zip(&self.drawing_infos)
             .find(|(node, _info)| node.item_ref == item)
-            .map(|(_, info)| {
-                let p = (y - info.top()) / (info.bottom() - info.top());
-                p
-            })
+            .map(|(_, info)| (y - info.top()) / (info.bottom() - info.top()))
     }
 
     pub(crate) fn draw_graphics(
@@ -202,7 +199,7 @@ impl WaveData {
                         let start_pos = (ctx.to_screen)(from_x, from_y);
                         let end_pos = (ctx.to_screen)(to_x, to_y);
                         let temp_rect = emath::Rect::from_two_pos(start_pos, end_pos);
-                        let stroke: Stroke = Stroke { width: 3., color }.into();
+                        let stroke: Stroke = Stroke { width: 3., color };
 
                         ctx.painter
                             .rect_stroke(temp_rect, 0.0, stroke, egui::StrokeKind::Middle);

@@ -124,7 +124,7 @@ impl SystemState {
             //Attach position to canvas, so it doesn't follow screen movement.
             if let Some(time) = &self.gesture_start_time {
                 let x_pixel = waves.viewports[viewport_idx].pixel_from_time(
-                    &time,
+                    time,
                     ctx.cfg.canvas_size.x,
                     &waves.safe_num_timestamps(),
                 );
@@ -133,7 +133,7 @@ impl SystemState {
             let modifiers = egui_ctx.input(|i| i.modifiers);
             if response.dragged_by(PointerButton::Middle)
                 || modifiers.command && response.dragged_by(PointerButton::Primary)
-                || !self.annotation_kind.is_none() && response.dragged_by(PointerButton::Primary)
+                || self.annotation_kind.is_some() && response.dragged_by(PointerButton::Primary)
             {
                 self.start_dragging(
                     pointer_pos_canvas,
@@ -149,7 +149,7 @@ impl SystemState {
 
             if response.drag_stopped_by(PointerButton::Middle)
                 || modifiers.command && response.drag_stopped_by(PointerButton::Primary)
-                || !self.annotation_kind.is_none()
+                || self.annotation_kind.is_some()
                     && response.drag_stopped_by(PointerButton::Primary)
             {
                 let frame_width = response.rect.width();
@@ -346,16 +346,14 @@ impl SystemState {
                     }
                 },
             }
-        } else {
-            if self.annotation_kind.is_none() {
-                draw_gesture_help(
-                    &self.user.config,
-                    response,
-                    ctx.painter,
-                    Some(start_location),
-                    true,
-                );
-            }
+        } else if self.annotation_kind.is_none() {
+            draw_gesture_help(
+                &self.user.config,
+                response,
+                ctx.painter,
+                Some(start_location),
+                true,
+            );
         }
     }
 
@@ -469,8 +467,8 @@ impl SystemState {
 
         let viewport = &waves.viewports[viewport_idx];
 
-        let t1 = viewport.as_time_bigint(start_location.x, frame_width, &num_timestamps);
-        let t2 = viewport.as_time_bigint(end_location.x, frame_width, &num_timestamps);
+        let t1 = viewport.as_time_bigint(start_location.x, frame_width, num_timestamps);
+        let t2 = viewport.as_time_bigint(end_location.x, frame_width, num_timestamps);
 
         let (time_start, time_end) = (t1.clone().min(t2.clone()), t1.max(t2));
 
@@ -552,7 +550,7 @@ impl SystemState {
         let time_from: BigInt = waves.viewports[viewport_idx].as_time_bigint(
             start_location.x,
             frame_width,
-            &num_timestamps,
+            num_timestamps,
         );
 
         let snap_pos = Some(Pos2::new(end_location.x, end_location.y - offset));
@@ -563,7 +561,7 @@ impl SystemState {
                 waves.viewports[viewport_idx].as_time_bigint(
                     end_location.x,
                     frame_width,
-                    &num_timestamps,
+                    num_timestamps,
                 )
             });
 

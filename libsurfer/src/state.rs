@@ -551,6 +551,25 @@ impl SystemState {
             mem::swap(&mut waves.cursor, &mut new_waves.cursor);
             mem::swap(&mut waves.markers, &mut new_waves.markers);
             mem::swap(&mut waves.focused_item, &mut new_waves.focused_item);
+
+            mem::swap(&mut waves.annotations, &mut new_waves.annotations);
+            //load annotations
+            mem::swap(
+                &mut waves.annotation_groups,
+                &mut new_waves.annotation_groups,
+            );
+            mem::swap(
+                &mut waves.annotation_list_visible,
+                &mut new_waves.annotation_list_visible,
+            );
+            mem::swap(
+                &mut waves.annotation_counter,
+                &mut new_waves.annotation_counter,
+            );
+            mem::swap(
+                &mut waves.selected_annotation,
+                &mut new_waves.selected_annotation,
+            );
             waves.default_variable_name_type = new_waves.default_variable_name_type;
             waves.scroll_offset = new_waves.scroll_offset;
             load_commands
