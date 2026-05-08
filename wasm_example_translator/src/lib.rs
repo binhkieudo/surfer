@@ -59,7 +59,7 @@ pub fn translate(
 #[plugin_fn]
 pub fn variable_info(variable: VariableMeta<(), ()>) -> FnResult<VariableInfo> {
     Ok(VariableInfo::Compound {
-        subfields: (0..(variable.num_bits.unwrap_or_default() / 4 + 1))
+        subfields: (0..(variable.num_bits.unwrap_or_default().div_ceil(4)))
             .map(|i| (format!("[{i}]"), VariableInfo::Bits))
             .collect(),
     })

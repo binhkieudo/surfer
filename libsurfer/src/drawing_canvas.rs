@@ -868,10 +868,10 @@ impl SystemState {
         // We draw in absolute coords, but the variable offset in the y
         // direction is also in absolute coordinates, so we need to
         // compensate for that
-        for (item_count, drawing_info) in sorted_drawing_infos.iter().copied().enumerate() {
-            // Get background color
+        for drawing_info in sorted_drawing_infos.iter().copied() {
+            // Use vidx so all sub-fields of a compound share the same stripe index
             let background_color =
-                self.get_background_color(waves, drawing_info.vidx(), item_count);
+                self.get_background_color(waves, drawing_info.vidx(), drawing_info.vidx().0);
 
             self.draw_background(drawing_info, &ctx, background_color);
         }

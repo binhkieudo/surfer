@@ -2785,7 +2785,8 @@ snapshot_ui_with_file_and_msgs! {wasm_translator_works, "examples/picorv32.vcd",
         }),
         String::from("Binary"),
     ),
-    Message::ExpandDrawnItem { item: DisplayedItemRef(1), levels: 1 }
+    Message::ExpandDrawnItem { item: DisplayedItemRef(1), levels: 1 },
+    Message::CursorSet(BigInt::from(5000000))
 ]}
 
 snapshot_ui_with_file_and_msgs! {analog_waveform_with_4state, "examples/analog.vcd", [

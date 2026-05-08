@@ -872,6 +872,20 @@ impl WaveData {
         !self.displayed_items.is_empty()
     }
 
+    fn drawing_top(&self) -> Option<f32> {
+        self.drawing_infos
+            .iter()
+            .map(ItemDrawingInfo::top)
+            .min_by(|a, b| a.total_cmp(b))
+    }
+
+    fn drawing_bottom(&self) -> Option<f32> {
+        self.drawing_infos
+            .iter()
+            .map(ItemDrawingInfo::bottom)
+            .max_by(|a, b| a.total_cmp(b))
+    }
+
     /// Find the top-most of the currently visible items.
     #[must_use]
     /// Returns the index of the item currently at the top of the visible area.
@@ -881,7 +895,7 @@ impl WaveData {
         }
         // drawing_infos contains content-space positions from the last draw.
         // The visible top is at: first_element_y + scroll_offset
-        let first_element_y = self.drawing_infos.first().unwrap().top();
+        let first_element_y = self.drawing_top().unwrap();
         let visible_top = first_element_y + self.scroll_offset;
 
         self.drawing_infos
@@ -893,14 +907,14 @@ impl WaveData {
 
     //Return the y-coordinate of the first visible item in global coordinates
     pub fn get_content_start(&self, ctx: &mut DrawingContext<'_>) -> f32 {
-        let first_element_top = self.drawing_infos.first().unwrap().top();
+        let first_element_top = self.drawing_top().unwrap();
         let y = (ctx.to_screen)(0., 0.).y;
         first_element_top - y
     }
 
     //Returns the y-coordinate of the current visible items in global coordinates
     pub fn get_content_height(&self, ctx: &mut DrawingContext<'_>) -> f32 {
-        let last_element_bottom = self.drawing_infos.last().unwrap().bottom();
+        let last_element_bottom = self.drawing_bottom().unwrap();
         let y = (ctx.to_screen)(0., 0.).y;
         last_element_bottom - y
     }
@@ -911,8 +925,8 @@ impl WaveData {
         if self.drawing_infos.is_empty() {
             return None;
         }
-        let first_element_top = self.drawing_infos.first().unwrap().top();
-        let first_element_bottom = self.drawing_infos.last().unwrap().bottom();
+        let first_element_top = self.drawing_top().unwrap();
+        let first_element_bottom = self.drawing_bottom().unwrap();
         let threshold = y + first_element_top + self.scroll_offset;
         if first_element_bottom <= threshold {
             return None;
@@ -930,8 +944,8 @@ impl WaveData {
         if self.drawing_infos.is_empty() {
             return;
         }
-        let first_element_y = self.drawing_infos.first().unwrap().top();
-        let last_element_bottom = self.drawing_infos.last().unwrap().bottom();
+        let first_element_y = self.drawing_top().unwrap();
+        let last_element_bottom = self.drawing_bottom().unwrap();
         let content_height = last_element_bottom - first_element_y;
 
         // Don't scroll if all content fits in viewport

@@ -666,6 +666,14 @@ impl SystemState {
         }
     }
 
+    fn bottom_most_item<'a>(
+        infos: impl IntoIterator<Item = &'a ItemDrawingInfo>,
+    ) -> Option<&'a ItemDrawingInfo> {
+        infos
+            .into_iter()
+            .max_by(|a, b| a.bottom().total_cmp(&b.bottom()))
+    }
+
     fn item_text_margin(ui: &Ui) -> Vec2 {
         ui.spacing().item_spacing
     }
@@ -703,6 +711,59 @@ impl SystemState {
         }
     }
 
+    fn variable_visible_height(
+        &self,
+        ui: &Ui,
+        displayed_item: &DisplayedItem,
+        field: &FieldRef,
+        info: &VariableInfo,
+        levels_to_force_expand: Option<usize>,
+    ) -> f32 {
+        let desired_height = self.desired_item_row_height(displayed_item);
+        match info {
+            VariableInfo::Compound { subfields } => {
+                let mut header = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    egui::Id::new(field),
+                    false,
+                );
+                if let Some(level) = levels_to_force_expand {
+                    header.set_open(level > 0);
+                }
+
+                // Collapsing headers are laid out with `ui.horizontal`, whose baseline
+                // minimum height is `interact_size.y`.
+                let compound_header_height = desired_height.max(ui.spacing().interact_size.y);
+
+                if !header.is_open() {
+                    return compound_header_height;
+                }
+
+                compound_header_height
+                    + subfields
+                        .iter()
+                        .map(|(name, child_info)| {
+                            let mut child_path = field.clone();
+                            child_path.field.push(name.clone());
+                            self.variable_visible_height(
+                                ui,
+                                displayed_item,
+                                &child_path,
+                                child_info,
+                                levels_to_force_expand.map(|l| l.saturating_sub(1)),
+                            )
+                        })
+                        .sum::<f32>()
+            }
+            VariableInfo::Bool
+            | VariableInfo::Bits
+            | VariableInfo::Clock
+            | VariableInfo::String
+            | VariableInfo::Event
+            | VariableInfo::Real => desired_height,
+        }
+    }
+
     fn draw_item_focus_list(&self, ui: &mut Ui) {
         let Some(waves) = self.user.waves.as_ref() else {
             return;
@@ -733,7 +794,7 @@ impl SystemState {
                 }
                 Self::add_padding_for_last_item(
                     ui,
-                    waves.drawing_infos.last(),
+                    Self::bottom_most_item(waves.drawing_infos.iter()),
                     self.user.config.layout.waveforms_line_height,
                 );
             },
@@ -831,10 +892,39 @@ impl SystemState {
                         continue;
                     };
 
+                    let levels_to_force_expand =
+                        if matches!(displayed_item, DisplayedItem::Variable(_)) {
+                            self.items_to_expand
+                                .borrow()
+                                .iter()
+                                .find_map(
+                                    |(id, levels)| {
+                                        if item_ref == id { Some(*levels) } else { None }
+                                    },
+                                )
+                        } else {
+                            None
+                        };
+
                     // Calculate background color for this item
                     let background_color = self.get_background_color(waves, vidx, item_count);
                     let row_top = ui.cursor().top();
-                    let row_height = self.desired_item_row_height(displayed_item);
+                    let row_height = match displayed_item {
+                        DisplayedItem::Variable(displayed_variable) => self
+                            .variable_visible_height(
+                                ui,
+                                displayed_item,
+                                &FieldRef::without_fields(displayed_variable.variable_ref.clone()),
+                                &displayed_variable.info,
+                                levels_to_force_expand,
+                            ),
+                        DisplayedItem::Divider(_)
+                        | DisplayedItem::Marker(_)
+                        | DisplayedItem::Placeholder(_)
+                        | DisplayedItem::TimeLine(_)
+                        | DisplayedItem::Stream(_)
+                        | DisplayedItem::Group(_) => self.desired_item_row_height(displayed_item),
+                    };
                     let min = Pos2::new(background_rect.left(), row_top);
                     let max = Pos2::new(background_rect.right(), row_top + row_height);
                     painter.rect_filled(Rect { min, max }, CornerRadius::ZERO, background_color);
@@ -868,31 +958,19 @@ impl SystemState {
                     }
 
                     let item_rect = match displayed_item {
-                        DisplayedItem::Variable(displayed_variable) => {
-                            let levels_to_force_expand = self
-                                .items_to_expand
-                                .borrow()
-                                .iter()
-                                .find_map(
-                                    |(id, levels)| {
-                                        if item_ref == id { Some(*levels) } else { None }
-                                    },
-                                );
-
-                            self.draw_variable(
-                                msgs,
-                                vidx,
-                                displayed_item,
-                                *item_ref,
-                                FieldRef::without_fields(displayed_variable.variable_ref.clone()),
-                                &mut item_offsets,
-                                &displayed_variable.info,
-                                row_ui,
-                                levels_to_force_expand,
-                                alignment,
-                                background_color,
-                            )
-                        }
+                        DisplayedItem::Variable(displayed_variable) => self.draw_variable(
+                            msgs,
+                            vidx,
+                            displayed_item,
+                            *item_ref,
+                            FieldRef::without_fields(displayed_variable.variable_ref.clone()),
+                            &mut item_offsets,
+                            &displayed_variable.info,
+                            row_ui,
+                            levels_to_force_expand,
+                            alignment,
+                            background_color,
+                        ),
                         DisplayedItem::Divider(_)
                         | DisplayedItem::Marker(_)
                         | DisplayedItem::Placeholder(_)
@@ -933,7 +1011,7 @@ impl SystemState {
                 }
                 Self::add_padding_for_last_item(
                     ui,
-                    item_offsets.last(),
+                    Self::bottom_most_item(item_offsets.iter()),
                     self.user.config.layout.waveforms_line_height
                         + 2.0 * self.user.config.layout.waveforms_gap,
                 );
@@ -1063,11 +1141,12 @@ impl SystemState {
         match info {
             VariableInfo::Compound { subfields } => {
                 let mut header = egui::collapsing_header::CollapsingState::load_with_default_open(
-                    ui,
+                    ui.ctx(),
                     egui::Id::new(&field),
                     false,
                 );
                 let desired_height = self.desired_item_row_height(displayed_item);
+                let compound_header_height = desired_height.max(ui.spacing().interact_size.y);
 
                 if let Some(level) = levels_to_force_expand {
                     header.set_open(level > 0);
@@ -1102,24 +1181,18 @@ impl SystemState {
                                     for (name, info) in subfields {
                                         let mut new_path = field.clone();
                                         new_path.field.push(name.clone());
-                                        ui.with_layout(
-                                            Layout::top_down(alignment).with_cross_justify(true),
-                                            |ui| {
-                                                self.draw_variable(
-                                                    msgs,
-                                                    vidx,
-                                                    displayed_item,
-                                                    displayed_id,
-                                                    new_path,
-                                                    drawing_infos,
-                                                    info,
-                                                    ui,
-                                                    levels_to_force_expand
-                                                        .map(|l| l.saturating_sub(1)),
-                                                    alignment,
-                                                    background_color,
-                                                );
-                                            },
+                                        self.draw_variable(
+                                            msgs,
+                                            vidx,
+                                            displayed_item,
+                                            displayed_id,
+                                            new_path,
+                                            drawing_infos,
+                                            info,
+                                            ui,
+                                            levels_to_force_expand.map(|l| l.saturating_sub(1)),
+                                            alignment,
+                                            background_color,
                                         );
                                     }
                                 })
@@ -1127,12 +1200,13 @@ impl SystemState {
                         .inner
                     })
                     .inner;
-                let fixed_row_rect = Self::clamp_rect_to_bounds(
-                    Rect::from_min_max(
-                        Pos2::new(response.0.rect.min.x, row_top),
-                        Pos2::new(response.0.rect.max.x, row_top + desired_height),
-                    ),
-                    precomputed_bounds,
+                // The compound header entry spans exactly one row; sub-fields
+                // push their own drawing_infos entries and must not be included
+                // in this rect (using precomputed_bounds / max_rect.bottom() here
+                // would span the entire N-row block and misalign the values panel).
+                let fixed_row_rect = Rect::from_min_max(
+                    Pos2::new(response.0.rect.min.x, row_top),
+                    Pos2::new(response.0.rect.max.x, row_top + compound_header_height),
                 );
                 drawing_infos.push(ItemDrawingInfo::Variable(VariableDrawingInfo {
                     displayed_field_ref,
@@ -1622,12 +1696,7 @@ impl SystemState {
             let text_style = TextStyle::Monospace;
             ui.style_mut().override_text_style = Some(text_style);
             ui.spacing_mut().item_spacing.y = 0.0;
-            for (item_count, drawing_info) in waves
-                .drawing_infos
-                .iter()
-                .sorted_by_key(|o| o.top() as i32)
-                .enumerate()
-            {
+            for drawing_info in waves.drawing_infos.iter().sorted_by_key(|o| o.top() as i32) {
                 let next_y = ui.cursor().top();
                 // In order to align the text in this view with the variable tree,
                 // we need to keep track of how far away from the expected offset we are,
@@ -1637,13 +1706,14 @@ impl SystemState {
                 }
 
                 let backgroundcolor =
-                    self.get_background_color(waves, drawing_info.vidx(), item_count);
+                    self.get_background_color(waves, drawing_info.vidx(), drawing_info.vidx().0);
                 self.draw_background(drawing_info, &ctx, backgroundcolor);
                 match drawing_info {
-                    ItemDrawingInfo::Variable(drawing_info) => {
+                    ItemDrawingInfo::Variable(variable_info) => {
                         let waveforms_gap = self.user.config.layout.waveforms_gap;
                         let waveform_height =
-                            (drawing_info.bottom - drawing_info.top - 2.0 * waveforms_gap).max(1.0);
+                            (variable_info.bottom - variable_info.top - 2.0 * waveforms_gap)
+                                .max(1.0);
                         if ucursor.as_ref().is_none() {
                             ui.label("");
                             continue;
@@ -1651,7 +1721,7 @@ impl SystemState {
 
                         let v = self.get_variable_value(
                             waves,
-                            &drawing_info.displayed_field_ref,
+                            &variable_info.displayed_field_ref,
                             ucursor.as_ref(),
                         );
                         if let Some(v) = v {
@@ -1666,11 +1736,11 @@ impl SystemState {
                             .context_menu(|ui| {
                                 self.item_context_menu(
                                     Some(&FieldRef::without_fields(
-                                        drawing_info.field_ref.root.clone(),
+                                        variable_info.field_ref.root.clone(),
                                     )),
                                     msgs,
                                     ui,
-                                    drawing_info.vidx,
+                                    variable_info.vidx,
                                     true,
                                     crate::message::MessageTarget::CurrentSelection,
                                 );
@@ -1724,7 +1794,7 @@ impl SystemState {
             }
             Self::add_padding_for_last_item(
                 ui,
-                waves.drawing_infos.last(),
+                Self::bottom_most_item(waves.drawing_infos.iter()),
                 self.user.config.layout.waveforms_line_height
                     + 2.0 * self.user.config.layout.waveforms_gap,
             );
