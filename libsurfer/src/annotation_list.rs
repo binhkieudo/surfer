@@ -1,6 +1,7 @@
 use crate::{Message, annotation::Annotatable, time::TimeFormatter, wave_data::WaveData};
 use egui::{Align, Color32, Key, Layout, Ui};
 use egui_remixicon::icons;
+use tracing::warn;
 
 #[derive(Clone, Default)]
 pub struct AnnotationList {}
@@ -12,7 +13,14 @@ const WIDTH_CONSTRAINT: f32 = 30.;
 
 impl AnnotationList {}
 
-use std::collections::BTreeSet;
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct AnnotationGroup {
+    pub name: String,
+    pub cycle_counter: usize,
+    pub annotations: Vec<egui::Id>,
+}
+
+impl AnnotationList {}
 
 impl WaveData {
     pub fn draw_annotation_list(
@@ -20,6 +28,7 @@ impl WaveData {
         ui: &mut Ui,
         msgs: &mut Vec<Message>,
         time_formatter: &TimeFormatter,
+        annotation_groups: &mut [AnnotationGroup],
     ) {
         ui.style_mut()
             .visuals
@@ -37,7 +46,9 @@ impl WaveData {
 
         ui.vertical_centered(|ui| {
             ui.heading("Annotation List");
-            ui.label("Your annotations will be displayed here.");
+            if self.annotations.is_empty() {
+                ui.label("Your annotations will be displayed here.");
+            }
         });
 
         ui.add_space(DEFAULT_SPACE * 2.);
@@ -70,15 +81,23 @@ impl WaveData {
 
             ui.data_mut(|d| d.insert_temp(input_id, buffer.clone()));
 
-            // Create group when user press enter
+            // create group when user press enter
             if text_edit_res.ctx.input(|i| i.key_pressed(Key::Enter)) && !buffer.is_empty() {
-                msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
-                ui.data_mut(|d| d.insert_temp(input_id, String::new()));
+                let flag = annotation_groups.iter().any(|group| {
+                    if group.name == buffer.trim() {
+                        return true;
+                    }
+                    false
+                });
+
+                if !flag {
+                    msgs.push(Message::CreateAnnotationGroup(buffer.trim().to_string()));
+                    ui.data_mut(|d| d.insert_temp(input_id, String::new()));
+                }
                 // Keep focus here so users can type the next group immediately
                 text_edit_res.request_focus();
             }
-
-            // Create group when user press plus button
+            // create group when user press plus button
             if ui
                 .button(icons::ADD_LINE)
                 .on_hover_text("Create Group")
@@ -89,7 +108,7 @@ impl WaveData {
                 ui.data_mut(|d| d.insert_temp(input_id, String::new()));
             }
 
-            // Delete group when user press plus button
+            // delete group when user press plus button
             if ui
                 .button(icons::DELETE_BIN_LINE)
                 .on_hover_text("Delete Group")
@@ -108,48 +127,29 @@ impl WaveData {
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                let mut all_groups = BTreeSet::new();
-
-                // include empty groups from the state's list
-                for g in &self.annotation_groups {
-                    all_groups.insert(g.clone());
+                // this is so ungrouped annotations are listed last
+                for group in annotation_groups.iter_mut().rev() {
+                    self.render_group_section(ui, group, msgs, time_formatter);
                 }
-
-                for group_name in all_groups {
-                    self.render_group_section(
-                        ui,
-                        Some(group_name.to_string()),
-                        msgs,
-                        time_formatter,
-                    );
-                }
-
-                self.render_group_section(ui, None, msgs, time_formatter);
             });
     }
 
     fn render_group_section(
         &self,
         ui: &mut Ui,
-        group_filter: Option<String>,
+        group: &mut AnnotationGroup,
         msgs: &mut Vec<Message>,
         time_formatter: &TimeFormatter,
     ) {
-        let display_name = group_filter
-            .clone()
-            .unwrap_or_else(|| DEFAULT_GROUP_NAME.to_string());
-        let items: Vec<_> = self
-            .annotations
-            .iter()
-            .filter(|r| r.get_group_name() == group_filter)
-            .collect();
-
-        if group_filter.is_none() && items.is_empty() {
-            return;
-        }
-
-        // Determine if the group is has any visible annotations to pick the icon
-        let any_visible = items.iter().any(|r| r.is_visible());
+        // Determine if the group is "mostly visible" or "mostly hidden" to pick the icon
+        let any_visible = group.annotations.iter().any(|id| {
+            if let Some(annotation) = self.get_annotation_by_id(id) {
+                annotation.is_visible()
+            } else {
+                warn!("Got id to non existing annotatation");
+                false
+            }
+        });
         let group_icon = if any_visible {
             icons::EYE_LINE
         } else {
@@ -157,238 +157,332 @@ impl WaveData {
         };
 
         // Create the header manually to inject the button
-        let id = ui.make_persistent_id(&display_name);
+        let id = ui.make_persistent_id(&group.name);
         let state =
             egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
 
         state
             .show_header(ui, |ui| {
-                ui.label(format!("{} ({})", display_name, items.len()));
+                ui.label(format!("{} ({})", group.name, group.annotations.len()));
 
                 // Push everything else to the right
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if display_name != DEFAULT_GROUP_NAME
+                    if group.name != DEFAULT_GROUP_NAME
                         && ui
                             .button(icons::DELETE_BIN_LINE)
                             .on_hover_text("Delete all annotations in this group")
                             .clicked()
                     {
-                        msgs.push(Message::DeleteAllAnnotationInGroup(
-                            group_filter.clone().unwrap_or("".to_string()),
-                        ));
+                        msgs.push(Message::DeleteAllAnnotationInGroup(group.name.clone()));
                     }
                     if ui
                         .button(group_icon)
                         .on_hover_text("Toggle visibility for all in this group")
                         .clicked()
                     {
-                        msgs.push(Message::SetGroupVisibility(
-                            group_filter.clone(),
-                            !any_visible,
+                        msgs.push(Message::SetGroupVisibility(group.clone(), !any_visible));
+                    }
+                    // No need to allow user to cycle unless there are more than one annotations in group
+                    if group.annotations.len() > 1
+                        && ui
+                            .button(icons::SKIP_FORWARD_LINE)
+                            .on_hover_text("Cycle through group")
+                            .clicked()
+                    {
+                        msgs.push(Message::GoToAnnotationPosition(
+                            group.annotations[group.cycle_counter],
+                            self.last_active_viewport_idx,
                         ));
+                        group.cycle_counter += 1;
+
+                        if group.cycle_counter >= group.annotations.len() {
+                            group.cycle_counter = 0;
+                        }
                     }
                 });
             })
             .body(|ui| {
-                if items.is_empty() {
+                if group.annotations.is_empty() {
                     ui.weak("  No items");
                 }
 
-                for annotation in items {
-                    let annotation_id = annotation.get_id();
-                    ui.horizontal(|ui| {
-                        ui.add_space(6.0);
+                for id in &group.annotations {
+                    if let Some(annotation) = self.get_annotation_by_id(id) {
+                        ui.horizontal(|ui| {
+                            ui.add_space(6.0);
 
-                        // Editable name logic
-                        let editing_id = ui.make_persistent_id(("editing_name", annotation_id));
-                        let is_editing =
-                            ui.data(|d| d.get_temp::<bool>(editing_id).unwrap_or(false));
+                            // Editable Name Logic
+                            let editing_id =
+                                ui.make_persistent_id(("editing_name", annotation.get_name()));
+                            let is_editing =
+                                ui.data(|d| d.get_temp::<bool>(editing_id).unwrap_or(false));
 
-                        let current_name = annotation.get_name();
+                            let current_name = annotation.get_name();
 
-                        if is_editing {
-                            let mut buffer = ui.data_mut(|d| {
-                                d.get_temp::<String>(editing_id)
-                                    .unwrap_or_else(|| current_name.clone())
-                            });
-
-                            let res = ui
-                                .add(egui::TextEdit::singleline(&mut buffer).desired_width(120.0));
-
-                            if res.has_focus() {
-                                ui.data_mut(|d| d.insert_temp(editing_id, buffer.clone()));
-                            }
-
-                            // Save on Enter or if focus is lost
-                            if res.lost_focus()
-                                || (res.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)))
-                            {
-                                msgs.push(Message::UpdateAnnotationName(
-                                    annotation_id,
-                                    buffer.trim().to_string(),
-                                ));
-                                ui.data_mut(|d| d.insert_temp(editing_id, false));
-                            }
-
-                            // Request focus once when we start editing
-                            if ui.data(|d| {
-                                d.get_temp::<bool>(
-                                    ui.make_persistent_id(("focus_req", annotation_id)),
-                                )
-                                .unwrap_or(true)
-                            }) {
-                                res.request_focus();
-                                ui.data_mut(|d| {
-                                    d.insert_temp(
-                                        ui.make_persistent_id(("focus_req", annotation_id)),
-                                        false,
-                                    )
+                            if is_editing {
+                                let mut buffer = ui.data_mut(|d| {
+                                    d.get_temp::<String>(editing_id)
+                                        .unwrap_or_else(|| current_name.clone())
                                 });
-                            }
-                        } else {
-                            // Display the name as a clickable label
-                            let response = ui.add(
-                                egui::Label::new(egui::RichText::new(&current_name).strong())
-                                    .sense(egui::Sense::click()),
-                            );
-                            if response.clicked() {
-                                ui.data_mut(|d| d.insert_temp(editing_id, true));
-                                ui.data_mut(|d| {
-                                    d.insert_temp(
-                                        ui.make_persistent_id(("focus_req", annotation_id)),
-                                        true,
+
+                                let res = ui.add(
+                                    egui::TextEdit::singleline(&mut buffer).desired_width(120.0),
+                                );
+
+                                if res.has_focus() {
+                                    ui.data_mut(|d| d.insert_temp(editing_id, buffer.clone()));
+                                }
+
+                                // Save on Enter or if focus is lost
+                                if res.lost_focus()
+                                    || (res.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)))
+                                {
+                                    msgs.push(Message::UpdateAnnotationName(
+                                        *id,
+                                        buffer.trim().to_string(),
+                                    ));
+                                    ui.data_mut(|d| d.insert_temp(editing_id, false));
+                                }
+
+                                // Request focus once when we start editing
+                                if ui.data(|d| {
+                                    d.get_temp::<bool>(
+                                        ui.make_persistent_id(("focus_req", &current_name)),
                                     )
-                                });
+                                    .unwrap_or(true)
+                                }) {
+                                    res.request_focus();
+                                    ui.data_mut(|d| {
+                                        d.insert_temp(
+                                            ui.make_persistent_id(("focus_req", current_name)),
+                                            false,
+                                        )
+                                    });
+                                }
+                            } else {
+                                // Display the name as a clickable label
+                                let response = ui.add(
+                                    egui::Label::new(egui::RichText::new(&current_name).strong())
+                                        .sense(egui::Sense::click()),
+                                );
+                                if response.clicked() {
+                                    ui.data_mut(|d| d.insert_temp(editing_id, true));
+                                    ui.data_mut(|d| {
+                                        d.insert_temp(
+                                            ui.make_persistent_id(("focus_req", current_name)),
+                                            true,
+                                        )
+                                    });
+                                }
+                                response.on_hover_text("Click to rename");
                             }
-                            response.on_hover_text("Click to rename");
-                        }
 
-                        let show_comment_icon = if annotation.show_comments() {
-                            icons::ARROW_DOWN_S_LINE
-                        } else {
-                            icons::ARROW_RIGHT_S_LINE
-                        };
+                            let show_comment_icon = if annotation.show_comments() {
+                                icons::ARROW_DOWN_S_LINE
+                            } else {
+                                icons::ARROW_RIGHT_S_LINE
+                            };
 
-                        if ui
-                            .button(show_comment_icon)
-                            .on_hover_text("Show comments")
-                            .clicked()
-                        {
-                            msgs.push(Message::ToggleAnnotationListShowComments(annotation_id));
-                        }
-
-                        // Group Selector
-                        let current_group = annotation.get_group_name();
-
-                        ui.menu_button(icons::FOLDER_TRANSFER_LINE, |ui| {
                             if ui
-                                .selectable_label(current_group.is_none(), DEFAULT_GROUP_NAME)
+                                .button(show_comment_icon)
+                                .on_hover_text("Show comments")
                                 .clicked()
                             {
-                                msgs.push(Message::UpdateAnnotationGroup(annotation_id, None));
-                                ui.close();
+                                msgs.push(Message::ToggleAnnotationListShowComments(*id));
                             }
 
-                            for group in &self.annotation_groups {
+                            // Group Selector
+                            let current_group = &mut annotation.get_group_name();
+
+                            ui.menu_button(icons::FOLDER_TRANSFER_LINE, |ui| {
+                                for group in self.annotation_groups.iter().rev() {
+                                    if ui
+                                        .selectable_value(
+                                            current_group,
+                                            Some(group.name.clone()),
+                                            group.name.clone(),
+                                        )
+                                        .clicked()
+                                    {
+                                        msgs.push(Message::UpdateAnnotationGroup(
+                                            *id,
+                                            Some(group.name.clone()),
+                                        ));
+                                        ui.close();
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text("Change Group");
+
+                            // Buttons on the right
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
-                                    .selectable_label(current_group.as_ref() == Some(group), group)
+                                    .button(icons::DELETE_BIN_LINE)
+                                    .on_hover_text("Delete annotation")
                                     .clicked()
                                 {
-                                    msgs.push(Message::UpdateAnnotationGroup(
-                                        annotation_id,
-                                        Some(group.clone()),
-                                    ));
-                                    ui.close();
+                                    msgs.push(Message::RemoveAnnotation(*id));
                                 }
-                            }
-                        })
-                        .response
-                        .on_hover_text("Change Group");
 
-                        // Buttons on the right of individual annotations
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .button(icons::DELETE_BIN_LINE)
-                                .on_hover_text("Delete annotation")
-                                .clicked()
-                            {
-                                msgs.push(Message::RemoveAnnotation(annotation_id));
-                            }
+                                let vis_icon = if annotation.is_visible() {
+                                    icons::EYE_LINE
+                                } else {
+                                    icons::EYE_OFF_LINE
+                                };
+                                if ui
+                                    .button(vis_icon)
+                                    .on_hover_text("Toggle visibility")
+                                    .clicked()
+                                {
+                                    msgs.push(Message::ToggleAnnotationVisiblility(*id));
+                                }
 
-                            let vis_icon = if !annotation.is_visible() {
-                                icons::EYE_OFF_LINE
-                            } else {
-                                icons::EYE_LINE
-                            };
-                            if ui
-                                .button(vis_icon)
-                                .on_hover_text("Toggle visibility")
-                                .clicked()
-                            {
-                                msgs.push(Message::ToggleAnnotationVisiblility(annotation_id));
-                            }
+                                let comment = annotation.get_comment_box();
 
-                            if ui
-                                .button(icons::SEARCH_LINE)
-                                .on_hover_text("Go to annotation")
-                                .clicked()
-                            {
-                                msgs.push(Message::GoToAnnotationPosition(
-                                    annotation_id,
-                                    self.last_active_viewport_idx,
-                                ));
-                            }
-                        });
-                    });
+                                if annotation.is_visible() {
+                                    let chat_icon = if comment.visible {
+                                        icons::CHAT_4_LINE
+                                    } else {
+                                        icons::CHAT_OFF_LINE
+                                    };
 
-                    ui.horizontal(|ui| {
-                        ui.add_space(16.0);
-                        ui.label(
-                            egui::RichText::new(annotation.get_time_info(time_formatter))
-                                .size(TIME_FONT_SIZE)
-                                .color(Color32::LIGHT_GRAY),
-                        )
-                    });
-
-                    // Show comments for this annotation
-                    if annotation.show_comments() {
-                        let messages = annotation.get_messages();
-                        for c in messages {
-                            let mut line_left = ui.cursor().left_top();
-                            line_left.x += 16.;
-                            ui.painter().add(egui::Shape::line_segment(
-                                [line_left, ui.cursor().right_top()],
-                                egui::Stroke::new(0.5, egui::Color32::WHITE),
-                            ));
-                            ui.horizontal(|ui| {
-                                ui.add_space(18.0); // Indent comments
-                                ui.vertical(|ui| {
-                                    ui.add_space(DEFAULT_SPACE / 2.);
-                                    ui.set_max_width(ui.available_width() - WIDTH_CONSTRAINT);
-                                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-
-                                    ui.add(egui::Label::new(c.text.as_str()).wrap());
-                                });
-
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let response = ui.add_sized(
-                                        egui::Vec2::new(10.0, 10.0),
-                                        egui::Button::new(icons::DELETE_BIN_LINE),
-                                    );
-
-                                    if response.on_hover_text("Delete message").clicked() {
-                                        msgs.push(Message::RemoveCommentMessage(
-                                            annotation.get_id(),
-                                            c.id,
-                                        ));
+                                    if ui
+                                        .button(chat_icon)
+                                        .on_hover_text("Toggle comment visibility")
+                                        .clicked()
+                                    {
+                                        msgs.push(Message::ToggleCommentVisibility(*id));
                                     }
-                                });
+                                }
+                                if ui
+                                    .button(icons::SEARCH_LINE)
+                                    .on_hover_text("Go to annotation")
+                                    .clicked()
+                                {
+                                    msgs.push(Message::GoToAnnotationPosition(
+                                        *id,
+                                        self.last_active_viewport_idx,
+                                    ));
+                                }
                             });
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            ui.label(
+                                egui::RichText::new(annotation.get_time_info(time_formatter))
+                                    .size(TIME_FONT_SIZE)
+                                    .color(Color32::LIGHT_GRAY),
+                            )
+                        });
+
+                        // Show comments for this annotation
+                        if annotation.show_comments() {
+                            let messages = annotation.get_messages();
+                            for c in messages {
+                                let mut line_left = ui.cursor().left_top();
+                                line_left.x += 16.;
+                                ui.painter().add(egui::Shape::line_segment(
+                                    [line_left, ui.cursor().right_top()],
+                                    egui::Stroke::new(0.5, egui::Color32::WHITE),
+                                ));
+                                ui.horizontal(|ui| {
+                                    ui.add_space(18.0); // Indent comments
+                                    ui.vertical(|ui| {
+                                        ui.add_space(DEFAULT_SPACE / 2.);
+                                        ui.set_max_width(ui.available_width() - WIDTH_CONSTRAINT);
+                                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+
+                                        ui.add(egui::Label::new(c.text.as_str()).wrap());
+                                    });
+
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        let response = ui.add_sized(
+                                            egui::Vec2::new(10.0, 10.0),
+                                            egui::Button::new(icons::DELETE_BIN_LINE),
+                                        );
+
+                                        if response.on_hover_text("Delete message").clicked() {
+                                            msgs.push(Message::RemoveCommentMessage(
+                                                annotation.get_id(),
+                                                c.id,
+                                            ));
+                                        }
+                                    });
+                                });
+                            }
                         }
                     }
                 }
             });
         ui.separator();
         ui.add_space(DEFAULT_SPACE);
+    }
+
+    pub fn remove_annotation_from_group(&mut self, id_to_remove: egui::Id) -> Option<egui::Id> {
+        for group in &mut self.annotation_groups {
+            if let Some(idx) = group.annotations.iter().position(|&id| id == id_to_remove) {
+                group.cycle_counter = 0;
+                return Some(group.annotations.remove(idx));
+            }
+        }
+
+        None
+    }
+
+    pub fn remove_all_annotations_from_group(&mut self, name: String) {
+        for group in &mut self.annotation_groups {
+            if group.name == name {
+                group.cycle_counter = 0;
+                group.annotations = Vec::new();
+            }
+        }
+    }
+
+    pub fn delete_group(&mut self, group_name: String) {
+        if let Some(idx) = self
+            .annotation_groups
+            .iter()
+            .position(|group| group.name == group_name)
+        {
+            self.annotation_groups.remove(idx);
+        }
+    }
+
+    pub fn add_annotation_to_group(&mut self, group_name: String, id_to_add: egui::Id) {
+        if let Some(idx) = self
+            .annotation_groups
+            .iter()
+            .position(|group| group.name == group_name)
+        {
+            self.annotation_groups[idx].annotations.push(id_to_add);
+        }
+    }
+
+    #[must_use]
+    pub fn annotation_is_in_group(&self, annotation_id: egui::Id) -> bool {
+        for group in &self.annotation_groups {
+            if group.annotations.contains(&annotation_id) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    #[must_use]
+    pub fn get_group_from_annotation(&self, annotation_id: egui::Id) -> Option<&AnnotationGroup> {
+        self.annotation_groups
+            .iter()
+            .find(|&group| group.annotations.contains(&annotation_id))
+            .map(|g| g as _)
+    }
+
+    pub fn get_group_from_name(&mut self, group_name: String) -> Option<&mut AnnotationGroup> {
+        self.annotation_groups
+            .iter_mut()
+            .find(|group| group.name == group_name)
+            .map(|g| g as _)
     }
 }

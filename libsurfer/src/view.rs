@@ -500,11 +500,18 @@ impl SystemState {
                     let Some(waves) = self.user.waves.as_ref() else {
                         return msgs;
                     };
+
                     let time_formatter = TimeFormatter::new(
                         &waves.inner.metadata().timescale,
                         &self.user.wanted_timeunit,
                         &self.get_time_format(),
                     );
+
+                    let Some(waves) = self.user.waves.as_mut() else {
+                        return msgs;
+                    };
+                    let annotation_groups = &mut waves.annotation_groups.clone();
+
                     Panel::right("Annotation list")
                         .default_size(290.)
                         .size_range(100.0..=max_width)
@@ -517,8 +524,15 @@ impl SystemState {
                                 .stroke(std_stroke),
                         )
                         .show_inside(ui, |ui| {
-                            waves.draw_annotation_list(ui, &mut msgs, &time_formatter);
+                            waves.draw_annotation_list(
+                                ui,
+                                &mut msgs,
+                                &time_formatter,
+                                annotation_groups,
+                            );
                         });
+
+                    waves.annotation_groups = annotation_groups.clone();
                 }
 
                 self.click_handled = false;

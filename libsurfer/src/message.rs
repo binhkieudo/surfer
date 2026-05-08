@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use surver::SurverStatus;
 
+use crate::annotation_list::AnnotationGroup;
 use crate::arrow::{ArrowHeadMode, WavePoint};
 use crate::async_util::AsyncJob;
 use crate::comment::Comment;
@@ -471,7 +472,7 @@ pub enum Message {
     DeleteAnnotationGroup(String),
     DeleteAllAnnotationInGroup(String),
     UpdateAnnotationGroup(Id, Option<String>),
-    SetGroupVisibility(Option<String>, bool),
+    SetGroupVisibility(AnnotationGroup, bool),
     UpdateAnnotationName(Id, String),
     AnnotationClicked(
         Option<Id>,

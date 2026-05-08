@@ -489,7 +489,7 @@ impl SystemState {
             display_id,
             local_commands,
             mut local_msgs,
-        } in commands.into_iter()
+        } in commands
         {
             msgs.append(&mut local_msgs);
             for (field, val) in local_commands {

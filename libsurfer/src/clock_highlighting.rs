@@ -104,7 +104,7 @@ pub(crate) fn draw_clock_edge_marks(
             let color_list = &config.theme.clock_highlight_line_colors;
             let single_active_clock = *active_clock_count <= 1;
 
-            for (x, clock_indices) in clock_edges.iter() {
+            for (x, clock_indices) in clock_edges {
                 let x_pos = (ctx.to_screen)(*x, 0.).x;
 
                 if clock_indices.len() == 1 {
@@ -225,7 +225,8 @@ impl SystemState {
         clock_edges_by_clock: Vec<(usize, Vec<f32>)>,
     ) -> ClockHighlightData {
         let active_clock_count = clock_edges_by_clock.len();
-        let clock_edges = match self.clock_highlight_type() {
+
+        match self.clock_highlight_type() {
             ClockHighlightType::Line => ClockHighlightData::Line {
                 clock_edges: group_clock_edges_by_time(clock_edges_by_clock),
                 active_clock_count,
@@ -235,8 +236,7 @@ impl SystemState {
                 active_clock_count,
             },
             ClockHighlightType::None => ClockHighlightData::None,
-        };
-        clock_edges
+        }
     }
 }
 

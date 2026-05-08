@@ -542,7 +542,7 @@ impl SystemState {
         self.user
             .variable_filter
             .matching_variables(variables, wave_container, full_path)
-            .to_vec()
+            .clone()
     }
 }
 

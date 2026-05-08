@@ -9,6 +9,7 @@ use surfer_translation_types::{TranslationPreference, Translator, VariableValue}
 use tracing::{error, info, warn};
 
 use crate::annotation::{Annotatable, Annotation};
+use crate::annotation_list::AnnotationGroup;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
     DisplayedDivider, DisplayedFieldRef, DisplayedGroup, DisplayedItem, DisplayedItemRef,
@@ -71,9 +72,7 @@ pub struct WaveData {
 
     #[serde(default)]
     pub annotations: Vec<Annotation>,
-    #[serde(default)]
-    pub annotation_groups: Vec<String>, // List of unique annotation group names
-    #[serde(default)]
+    pub annotation_groups: Vec<AnnotationGroup>, // List of unique group names
     pub annotation_list_visible: bool,
     #[serde(default)]
     pub annotation_counter: i32,
@@ -876,14 +875,14 @@ impl WaveData {
         self.drawing_infos
             .iter()
             .map(ItemDrawingInfo::top)
-            .min_by(|a, b| a.total_cmp(b))
+            .min_by(f32::total_cmp)
     }
 
     fn drawing_bottom(&self) -> Option<f32> {
         self.drawing_infos
             .iter()
             .map(ItemDrawingInfo::bottom)
-            .max_by(|a, b| a.total_cmp(b))
+            .max_by(f32::total_cmp)
     }
 
     /// Find the top-most of the currently visible items.

@@ -18,6 +18,7 @@ pub struct FileHistory {
 }
 
 impl FileHistory {
+    #[must_use]
     pub fn load(max_entries: usize) -> Self {
         let mut history = Self {
             files: Vec::new(),
@@ -28,10 +29,12 @@ impl FileHistory {
         history
     }
 
+    #[must_use]
     pub fn files(&self) -> &[Utf8PathBuf] {
         &self.files
     }
 
+    #[must_use]
     pub fn display_labels(&self) -> Vec<String> {
         disambiguated_labels(&self.files)
     }
@@ -89,7 +92,11 @@ impl FileHistory {
         }
 
         let stored = StoredFileHistory {
-            files: self.files.iter().map(|path| path.to_string()).collect(),
+            files: self
+                .files
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
         };
         let Ok(ron) =
             ron::Options::default().to_string_pretty(&stored, ron::ser::PrettyConfig::default())

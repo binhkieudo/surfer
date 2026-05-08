@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     CanvasState, StartupParams,
+    annotation_list::AnnotationGroup,
     clock_highlighting::ClockHighlightType,
     config::{ArrowKeyBindings, AutoLoad, PrimaryMouseDrag, SurferConfig, TransitionValue},
     data_container::DataContainer,
@@ -400,6 +401,15 @@ impl SystemState {
         if !is_reload && let Some(waves) = &mut self.user.waves {
             // Set time unit
             self.user.wanted_timeunit = waves.inner.metadata().timescale.unit;
+
+            let ungrouped = AnnotationGroup {
+                name: String::from("Ungrouped"),
+                cycle_counter: 0,
+                annotations: Vec::new(),
+            };
+
+            waves.annotation_groups.push(ungrouped);
+
             // Possibly open state file load dialog
             if waves.source.sibling_state_file().is_some() {
                 self.update(Message::SuggestOpenSiblingStateFile);

@@ -74,6 +74,7 @@ pub enum Graphic {
 impl WaveData {
     // FIXME: This function should probably not be here, we should instead update ItemDrawingInfo to
     // have this info
+    #[must_use]
     pub fn get_item_y(&self, y: &GraphicsY) -> Option<f32> {
         self.items_tree
             .iter_visible()
@@ -88,6 +89,8 @@ impl WaveData {
             .map(|point| point - self.top_item_draw_offset)
     }
 
+    /// Returns the y-value of an item given a percentual value
+    #[must_use]
     pub fn get_item_y_scale(&self, item: DisplayedItemRef, y: f32) -> Option<f32> {
         let y = y + self.top_item_draw_offset;
         self.items_tree

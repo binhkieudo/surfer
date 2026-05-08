@@ -65,6 +65,7 @@ pub enum AnnotationKind {
 
 impl SystemState {
     //Adjusts y_value to not go without scope and whether it should snap to waves or not.
+    #[allow(clippy::too_many_arguments)]
     fn clamp_y(
         &self,
         pos: Pos2,
@@ -168,6 +169,7 @@ impl SystemState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn stop_dragging(
         &self,
         pointer_pos_canvas: Option<Pos2>,
@@ -201,7 +203,7 @@ impl SystemState {
                         y_offset,
                     );
                 }
-                Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
+                Some(AnnotationKind::ArrowSingleHead | AnnotationKind::ArrowDoubleHead) => {
                     self.create_arrow(
                         end_location,
                         start_location,
@@ -262,6 +264,7 @@ impl SystemState {
         msgs.push(Message::SetMouseGestureAnnotation(None));
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn start_dragging(
         &self,
         pointer_pos_canvas: Option<Pos2>,
@@ -289,7 +292,7 @@ impl SystemState {
                         y_offset,
                     );
                 }
-                Some(AnnotationKind::ArrowSingleHead) | Some(AnnotationKind::ArrowDoubleHead) => {
+                Some(AnnotationKind::ArrowSingleHead | AnnotationKind::ArrowDoubleHead) => {
                     self.draw_arrow_line(start_location, current_location, "Add arrow", true, ctx);
                 }
                 _ => match gesture_type(self.user.config.gesture.mapping, distance) {
@@ -415,6 +418,7 @@ impl SystemState {
             .rect_stroke(temp_rect, 0.0, stroke, egui::StrokeKind::Middle);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_rectangle(
         &self,
         end_location: Pos2,
@@ -532,6 +536,7 @@ impl SystemState {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_arrow(
         &self,
         end_location: Pos2,
@@ -572,7 +577,7 @@ impl SystemState {
 
         if self.annotation_kind == Some(AnnotationKind::ArrowDoubleHead) {
             head_mode = ArrowHeadMode::Double;
-        };
+        }
 
         let wave_point_from = WavePoint {
             time: time_from.clone(),
@@ -592,7 +597,7 @@ impl SystemState {
                 wave_point_to,
                 head_mode,
             });
-        };
+        }
     }
 
     /// Draw the line used by most mouse gestures.

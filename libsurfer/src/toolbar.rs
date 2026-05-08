@@ -34,6 +34,21 @@ fn add_toolbar_button(
     }
 }
 
+/// Helper function to help the annotation buttons know what icon to display and message to send.
+fn annotation_helper<'a>(
+    state: &SystemState,
+    hover_text: &'a str,
+    icon_unselected: &'a str,
+    icon_selected: &'a str,
+    annotation_kind: AnnotationKind,
+) -> (&'a str, Option<AnnotationKind>, &'a str) {
+    if state.annotation_kind == Some(annotation_kind) {
+        (icon_selected, None, "Cancel Action")
+    } else {
+        (icon_unselected, Some(annotation_kind), hover_text)
+    }
+}
+
 impl SystemState {
     /// Add panel and draw toolbar.
     pub(crate) fn add_toolbar_panel(&self, ui: &mut Ui, msgs: &mut Vec<Message>) {
@@ -363,30 +378,52 @@ impl SystemState {
 
             ui.separator();
 
+            let (rect_icon, rect_kind, rect_text) = annotation_helper(
+                self,
+                "Add Rectangle",
+                icons::EDIT_BOX_LINE,
+                icons::EDIT_BOX_FILL,
+                AnnotationKind::Rectangle,
+            );
             add_toolbar_button(
                 ui,
                 msgs,
-                icons::EDIT_BOX_LINE,
-                "Add Rectangle",
-                Message::SetMouseGestureAnnotation(Some(AnnotationKind::Rectangle)),
-                wave_loaded && self.annotation_kind != Some(AnnotationKind::Rectangle),
+                rect_icon,
+                rect_text,
+                Message::SetMouseGestureAnnotation(rect_kind),
+                wave_loaded,
             );
 
-            add_toolbar_button(
-                ui,
-                msgs,
-                icons::ARROW_RIGHT_UP_FILL,
+            let (arrow_icon, arrow_kind, arrow_text) = annotation_helper(
+                self,
                 "Add Arrow",
-                Message::SetMouseGestureAnnotation(Some(AnnotationKind::ArrowSingleHead)),
-                wave_loaded && self.annotation_kind != Some(AnnotationKind::ArrowSingleHead),
+                icons::ARROW_RIGHT_UP_BOX_LINE,
+                icons::ARROW_RIGHT_UP_BOX_FILL,
+                AnnotationKind::ArrowSingleHead,
             );
             add_toolbar_button(
                 ui,
                 msgs,
-                icons::ARROW_LEFT_RIGHT_FILL,
+                arrow_icon,
+                arrow_text,
+                Message::SetMouseGestureAnnotation(arrow_kind),
+                wave_loaded,
+            );
+
+            let (double_arrow_icon, double_arrow_kind, double_arrow_text) = annotation_helper(
+                self,
                 "Add Double Headed Arrow",
-                Message::SetMouseGestureAnnotation(Some(AnnotationKind::ArrowDoubleHead)),
-                wave_loaded && self.annotation_kind != Some(AnnotationKind::ArrowDoubleHead),
+                icons::ARROW_LEFT_RIGHT_FILL,
+                icons::CLOSE_LARGE_LINE,
+                AnnotationKind::ArrowDoubleHead,
+            );
+            add_toolbar_button(
+                ui,
+                msgs,
+                double_arrow_icon,
+                double_arrow_text,
+                Message::SetMouseGestureAnnotation(double_arrow_kind),
+                wave_loaded,
             );
 
             add_toolbar_button(

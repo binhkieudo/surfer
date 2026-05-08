@@ -71,9 +71,9 @@ pub struct SystemState {
     pub(crate) variable_name_info_cache: RefCell<HashMap<VariableRef, Option<VariableNameInfo>>>,
 
     /// Monotonically increasing counter incremented when translators reload, to invalidate
-    /// the all_variable_rows_cache when name info changes without a waveform reload.
+    /// the `all_variable_rows_cache` when name info changes without a waveform reload.
     pub(crate) translator_generation: u64,
-    /// Cached result of build_variable_rows for draw_all_variables; rebuilt only when the
+    /// Cached result of `build_variable_rows` for `draw_all_variables`; rebuilt only when the
     /// key changes (filter settings, wave data, or translator state).
     pub(crate) all_variable_rows_cache: Option<(AllVariableCacheKey, Rc<Vec<VariableListRow>>)>,
 

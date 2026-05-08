@@ -8,6 +8,7 @@ use crate::{
     comment::{Comment, CommentMessage},
     config::SurferTheme,
     displayed_item::DisplayedItemRef,
+    graphics::GraphicsY,
     message::Message,
     rectangle::RectAnnotation,
     time::TimeFormatter,
@@ -155,6 +156,20 @@ impl Annotatable for Annotation {
         }
     }
 
+    fn get_start_time(&self) -> BigInt {
+        match self {
+            Annotation::Arrow(a) => a.get_start_time(),
+            Annotation::Rect(r) => r.get_start_time(),
+        }
+    }
+
+    fn get_end_time(&self) -> BigInt {
+        match self {
+            Annotation::Arrow(a) => a.get_end_time(),
+            Annotation::Rect(r) => r.get_end_time(),
+        }
+    }
+
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool {
         match self {
             Annotation::Arrow(a) => a.is_attached(removed_ref),
@@ -162,6 +177,21 @@ impl Annotatable for Annotation {
         }
     }
 
+    fn get_from_wave(&self) -> Option<GraphicsY> {
+        match self {
+            Annotation::Arrow(a) => a.get_from_wave(),
+            Annotation::Rect(r) => r.get_from_wave(),
+        }
+    }
+
+    fn get_to_wave(&self) -> Option<GraphicsY> {
+        match self {
+            Annotation::Arrow(a) => a.get_to_wave(),
+            Annotation::Rect(r) => r.get_to_wave(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &self,
         ui: &mut Ui,
@@ -245,8 +275,14 @@ pub trait Annotatable {
     fn get_messages(&self) -> Vec<CommentMessage>;
     fn is_visible(&self) -> bool;
     fn get_center_time(&self) -> BigInt;
+    fn get_start_time(&self) -> BigInt;
+    fn get_end_time(&self) -> BigInt;
+    /// Checks whether the annotation is attached to the given Item.
     fn is_attached(&self, removed_ref: &DisplayedItemRef) -> bool;
     fn get_time_info(&self, time_formatter: &TimeFormatter) -> String;
+    fn get_from_wave(&self) -> Option<GraphicsY>;
+    fn get_to_wave(&self) -> Option<GraphicsY>;
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &self,
         ui: &mut Ui,
@@ -303,10 +339,10 @@ pub trait Annotatable {
                                 ));
                             }
 
-                            let vis_icon = if !self.is_visible() {
-                                icons::EYE_OFF_LINE
-                            } else {
+                            let vis_icon = if self.is_visible() {
                                 icons::EYE_LINE
+                            } else {
+                                icons::EYE_OFF_LINE
                             };
 
                             if ui
@@ -339,7 +375,7 @@ pub trait Annotatable {
                                     .on_hover_text("Toggle comment visibility")
                                     .clicked()
                                 {
-                                    msgs.push(Message::ToggleCommentVisibility(id))
+                                    msgs.push(Message::ToggleCommentVisibility(id));
                                 }
                             }
                         });
@@ -431,6 +467,12 @@ impl WaveData {
             .retain(|annotation| annotation.get_id() != id);
     }
 
+    #[must_use]
+    pub fn get_annotation_by_id(&self, id: &egui::Id) -> Option<&Annotation> {
+        self.annotations.iter().find(|anno| anno.get_id() == *id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_annotations(
         &self,
         ui: &mut egui::Ui,
@@ -478,15 +520,15 @@ impl WaveData {
             }
         }
         for annotation in &self.annotations {
-            if annotation.show_comment_box() {
+            if annotation.show_comment_box() && annotation.is_visible() {
                 let comment_position =
                     annotation.get_comment_position(viewport, ctx, self, y_offset);
-                comment_changes.push(annotation.draw_comment_box(
-                    ui,
-                    viewport_idx,
-                    msgs,
-                    comment_position,
-                ));
+                let (id, comment) =
+                    annotation.draw_comment_box(ui, viewport_idx, msgs, comment_position);
+                // Only update comment if change has been made or something is being written
+                if comment.change || annotation.get_comment_box().new_text != comment.new_text {
+                    comment_changes.push((id, comment));
+                }
             }
         }
         if !comment_changes.is_empty() {
