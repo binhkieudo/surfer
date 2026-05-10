@@ -93,6 +93,7 @@ Controls the initial UI layout and waveform rendering behavior.
 | `waveforms_line_height` | `16.0` | non-negative number | Base line height for waveforms, in points. |
 | `waveforms_gap` | `2.5` | non-negative number | Vertical gap above and below waveform traces. Basically, how far the background is drawn. |
 | `waveforms_line_height_multiples` | `[1, 2, 4, 8, 16]` | list of non-negative numbers | Available line-height multipliers for taller rows. |
+| `analog_waveform_multiplier` | `4` | non-negative number | Default height multiplier applied when a variable is switched from digital to analog rendering. |
 | `transactions_line_height` | `30.0` | non-negative number | Line height for transaction streams. |
 | `zoom_factors` | `[0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 2.5]` | list of non-negative numbers | Available UI zoom factors. |
 | `default_zoom_factor` | `1.0` | non-negative number | Initial UI zoom factor. |

@@ -237,6 +237,9 @@ pub struct SurferLayout {
     /// Line height multiples for higher variables
     #[serde(deserialize_with = "deserialize_non_negative_f32_vec")]
     pub waveforms_line_height_multiples: Vec<f32>,
+    /// Default analog waveform multiplier
+    #[serde(deserialize_with = "deserialize_non_negative_f32")]
+    pub analog_waveform_multiplier: f32,
     /// Line height in points for transaction streams
     #[serde(deserialize_with = "deserialize_non_negative_f32")]
     pub transactions_line_height: f32,

@@ -1028,6 +1028,7 @@ impl SystemState {
             Message::SetAnalogSettings(vidx, new_settings) => {
                 self.save_current_canvas("Set analog state".into());
                 self.invalidate_draw_commands();
+                let analog_waveform_multiplier = self.user.config.layout.analog_waveform_multiplier;
                 let waves = self.user.waves.as_mut()?;
 
                 // Update settings while preserving existing cache
@@ -1035,7 +1036,10 @@ impl SystemState {
                     if let DisplayedItem::Variable(var) = item {
                         match (&mut var.analog, new_settings) {
                             (Some(s), Some(new)) => s.settings = new,
-                            (None, Some(new)) => var.analog = Some(AnalogVarState::new(new)),
+                            (None, Some(new)) => {
+                                var.analog = Some(AnalogVarState::new(new));
+                                var.height_scaling_factor = Some(analog_waveform_multiplier);
+                            }
                             (_, None) => var.analog = None,
                         }
                     }

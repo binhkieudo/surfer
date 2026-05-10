@@ -24,6 +24,9 @@ Right-click on a variable in the waveform view and select the analog rendering s
 
 Note: The Analog submenu is only shown for waveforms loaded via the wellen backend (VCD/FST/GHW). It is hidden for other backends, such as CXXRTL live simulations and transaction/FTR sources.
 
+When a variable is switched to analog rendering, Surfer applies a default row-height multiplier from the configuration key `layout.analog_waveform_multiplier` (default: `4`).
+You can still override the row height per item afterwards using the item height controls.
+
 ### Amplitude Labels
 
 Min and max value labels are displayed at the right edge of the waveform area, showing the current Y-axis range. These update based on the selected scaling mode:
