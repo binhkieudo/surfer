@@ -395,6 +395,8 @@ impl SystemState {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
 
+        self.record_file_history(&filename_for_title);
+
         if !is_reload && let Some(waves) = &mut self.user.waves {
             // Set time unit
             self.user.wanted_timeunit = waves.inner.metadata().timescale.unit;
@@ -413,6 +415,7 @@ impl SystemState {
         _loaded_options: LoadOptions,
     ) {
         info!("Transaction streams are loaded.");
+        self.record_file_history(&filename);
 
         let viewport = Viewport::new();
         let viewports = [viewport].to_vec();
@@ -455,6 +458,12 @@ impl SystemState {
         self.user.config.theme.alt_frequency = 0;
         self.user.wanted_timeunit = new_transaction_streams.inner.metadata().timescale.unit;
         self.user.waves = Some(new_transaction_streams);
+    }
+
+    fn record_file_history(&mut self, source: &WaveSource) {
+        if let Some(path) = source.path() {
+            self.file_history.add(path.clone());
+        }
     }
 
     #[cfg(test)]

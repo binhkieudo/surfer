@@ -23,6 +23,7 @@ pub mod displayed_item;
 pub mod displayed_item_tree;
 pub mod drawing_canvas;
 pub mod file_dialog;
+pub mod file_history;
 pub mod file_watcher;
 pub mod frame_buffer;
 pub mod fzcmd;

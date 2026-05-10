@@ -50,6 +50,22 @@ impl SystemState {
                 ui.label("to open an example waveform");
             });
 
+            #[cfg(not(test))]
+            if !self.file_history.files().is_empty() {
+                ui.add_space(10.0);
+                ui.label(RichText::new("Recent files"));
+
+                let labels = self.file_history.display_labels();
+                for (path, label) in self.file_history.files().iter().zip(labels.iter()) {
+                    if ui.link(label).on_hover_text(path.as_str()).clicked() {
+                        self.channels
+                            .msg_sender
+                            .send(Message::LoadFile(path.clone(), LoadOptions::Clear))
+                            .ok();
+                    }
+                }
+            }
+
             ui.add_space(20.0);
             ui.separator();
             ui.add_space(20.0);

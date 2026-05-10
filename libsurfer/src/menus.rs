@@ -107,6 +107,22 @@ impl SystemState {
                         .format_shortcut(ShortcutAction::SwitchFile),
                 )
                 .add_closing_menu(msgs, ui);
+
+            #[cfg(not(target_arch = "wasm32"))]
+            ui.menu_button("Recent files", |ui| {
+                if self.file_history.files().is_empty() {
+                    ui.add_enabled(false, Button::new("No recent files"));
+                    return;
+                }
+
+                let labels = self.file_history.display_labels();
+                for (path, label) in self.file_history.files().iter().zip(labels.iter()) {
+                    let response = ui.button(label).on_hover_text(path.as_str());
+                    if response.clicked() {
+                        msgs.push(Message::LoadFile(path.clone(), LoadOptions::Clear));
+                    }
+                }
+            });
             b(
                 "Reload",
                 Message::ReloadWaveform(self.user.config.behavior.keep_during_reload),

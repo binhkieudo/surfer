@@ -353,6 +353,8 @@ impl SurferLayout {
 pub struct SurferBehavior {
     /// Keep or remove variables if unavailable during reload
     pub keep_during_reload: bool,
+    /// Number of entries to keep in file history.
+    pub file_history_size: usize,
     /// Select the functionality bound to the arrow keys
     arrow_key_bindings: ArrowKeyBindings,
     /// Whether dragging with primary mouse button will measure time or move cursor
@@ -361,6 +363,11 @@ pub struct SurferBehavior {
 }
 
 impl SurferBehavior {
+    #[must_use]
+    pub fn file_history_size(&self) -> usize {
+        self.file_history_size
+    }
+
     #[must_use]
     pub fn primary_button_drag_behavior(&self) -> PrimaryMouseDrag {
         self.primary_button_drag_behavior
