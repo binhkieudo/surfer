@@ -503,8 +503,14 @@ pub struct SurferTheme {
 
     ///  Line style for clock highlight lines
     pub clock_highlight_line: SurferLineStyle,
+    #[serde(deserialize_with = "deserialize_hex_color_vec")]
+    /// Per-clock colors used for clock highlight lines in multi-clock views
+    pub clock_highlight_line_colors: Vec<Color32>,
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub clock_highlight_cycle: Color32,
+    #[serde(deserialize_with = "deserialize_hex_color_vec")]
+    /// Per-clock colors used for clock highlight fills in multi-clock Cycle mode
+    pub clock_highlight_cycle_colors: Vec<Color32>,
     /// Draw arrows on rising clock edges
     pub clock_rising_marker: bool,
 
@@ -1144,6 +1150,7 @@ impl Default for SurferConfig {
 }
 
 fn hex_string_to_color32(str: String) -> Result<Color32> {
+    let str = str.strip_prefix('#').unwrap_or(&str).to_string();
     let str = if str.len() == 3 {
         str.chars().flat_map(|c| [c, c]).collect()
     } else {
@@ -1183,6 +1190,17 @@ where
 
     let v = HashMap::<String, Wrapper>::deserialize(deserializer)?;
     Ok(v.into_iter().map(|(k, Wrapper(v))| (k, v)).collect())
+}
+
+fn deserialize_hex_color_vec<'de, D>(deserializer: D) -> Result<Vec<Color32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrapper(#[serde(deserialize_with = "deserialize_hex_color")] Color32);
+
+    let v = Vec::<Wrapper>::deserialize(deserializer)?;
+    Ok(v.into_iter().map(|Wrapper(v)| v).collect())
 }
 
 fn deserialize_theme<'de, D>(deserializer: D) -> Result<SurferTheme, D::Error>
@@ -1325,6 +1343,20 @@ mod tests {
         // Test specific 3-character doubling behavior
         let result = hex_string_to_color32("050".to_string()).unwrap();
         let expected = Color32::from_rgb(0x00, 0x55, 0x00);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_hex_string_with_hash_3_chars() {
+        let result = hex_string_to_color32("#abc".to_string()).unwrap();
+        let expected = Color32::from_rgb(0xaa, 0xbb, 0xcc);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_hex_string_with_hash_6_chars() {
+        let result = hex_string_to_color32("#ABCDEF".to_string()).unwrap();
+        let expected = Color32::from_rgb(0xab, 0xcd, 0xef);
         assert_eq!(result, expected);
     }
 }

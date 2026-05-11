@@ -660,6 +660,30 @@ snapshot_ui_with_file_and_msgs! {clock_pulses_render_none, "examples/counter.vcd
     Message::SetClockHighlightType(ClockHighlightType::None),
 ]}
 
+snapshot_ui_with_file_and_msgs! {multiple_clock_pulses_render_line, "examples/three_clocks.vcd", [
+    Message::AddScope(ScopeRef::from_strs(&["logic"]), false),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(2), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(3), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(1), field: vec![]}), String::from("Clock")),
+    Message::SetClockHighlightType(ClockHighlightType::Line),
+]}
+
+snapshot_ui_with_file_and_msgs! {multiple_clock_pulses_render_cycle, "examples/three_clocks.vcd", [
+    Message::AddScope(ScopeRef::from_strs(&["logic"]), false),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(2), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(3), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(1), field: vec![]}), String::from("Clock")),
+    Message::SetClockHighlightType(ClockHighlightType::Cycle),
+]}
+
+snapshot_ui_with_file_and_msgs! {multiple_clock_pulses_render_none, "examples/three_clocks.vcd", [
+    Message::AddScope(ScopeRef::from_strs(&["logic"]), false),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(3), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(1), field: vec![]}), String::from("Clock")),
+    Message::VariableFormatChange(MessageTarget::Explicit(DisplayedFieldRef{item: DisplayedItemRef(2), field: vec![]}), String::from("Clock")),
+    Message::SetClockHighlightType(ClockHighlightType::None),
+]}
+
 snapshot_ui_with_file_and_msgs! {recursive_add_scope, "examples/counter.vcd", [
     Message::AddScope(ScopeRef::from_strs(&["tb"]), true),
 ]}

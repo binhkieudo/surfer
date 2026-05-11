@@ -8,8 +8,8 @@ For a complete example, see the [default theme](https://gitlab.com/surfer-projec
 
 ## Value formats
 
-- Colors use RGB hex without a leading `#`, for example `"d4d4d4"`.
-- Three-digit hex like `"abc"` is also accepted and expanded to `"aabbcc"`.
+- Colors use RGB hex and may optionally start with `#`, for example `"d4d4d4"` or `"#d4d4d4"`.
+- Three-digit hex like `"abc"` or `"#abc"` is also accepted and expanded to `"aabbcc"`.
 - Widths, lengths, and similar numeric values are non-negative. Negative values are clamped to `0`.
 - Opacity-like values are clamped to the range `0..1`.
 
@@ -52,7 +52,9 @@ style = { color = "222222", width = 2 }
 | `gesture` | [`SurferLineStyle`](#surferlinestyle) | Style used for mouse gesture lines. |
 | `measure` | [`SurferLineStyle`](#surferlinestyle) | Style used for measurement lines. |
 | `clock_highlight_line` | [`SurferLineStyle`](#surferlinestyle) | Line style used when clock highlighting is in `Line` mode. |
+| `clock_highlight_line_colors` | list of colors | Additional per-clock colors used for clock highlighting in `Line` mode. In multi-clock views, the effective repeating cycle is `clock_highlight_line.color` followed by this list, then wrapped by clock index. |
 | `clock_highlight_cycle` | color | Fill color used when clock highlighting is in `Cycle` mode. |
+| `clock_highlight_cycle_colors` | list of colors | Additional per-clock colors used when clock highlighting is in `Cycle` mode. In multi-clock views, the effective repeating cycle is `clock_highlight_cycle` followed by this list, then wrapped by clock index. |
 | `clock_rising_marker` | boolean | Draw arrows on rising clock edges. |
 | `variable_default` | color | Default waveform color for regular signals. |
 | `variable_highimp` | color | Color used for high-impedance (`Z`) signal segments. |
@@ -94,7 +96,7 @@ Red = "f44747"
 Blue = "569cd6"
 ```
 
-Each key is an arbitrary user-visible color name and each value is a hex RGB color.
+Each key is an arbitrary user-visible color name and each value is a hex RGB color (with or without a leading `#`).
 
 ## Structured types
 

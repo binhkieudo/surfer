@@ -233,7 +233,7 @@ enum CachedDrawData {
 
 struct CachedWaveDrawData {
     pub draw_commands: HashMap<DisplayedFieldRef, drawing_canvas::DrawingCommands>,
-    pub clock_edges: Vec<f32>,
+    pub clock_edges: crate::clock_highlighting::ClockHighlightData,
     pub ticks: Vec<(String, f32, i64)>,
 }
 
@@ -1565,6 +1565,7 @@ impl SystemState {
             }
             Message::SetClockHighlightType(new_type) => {
                 self.user.clock_highlight_type = Some(new_type);
+                self.invalidate_draw_commands();
             }
             Message::SetFillHighValues(fill) => self.user.fill_high_values = Some(fill),
             Message::SetDinotraceStyle(dino_style) => {

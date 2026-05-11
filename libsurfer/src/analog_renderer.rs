@@ -71,6 +71,7 @@ pub(crate) fn variable_analog_draw_commands(
                     DrawingCommands::Analog(AnalogDrawingCommands::Loading),
                 );
                 return Some(VariableDrawCommands {
+                    draw_clock_edges: false,
                     clock_edges: vec![],
                     display_id,
                     local_commands,
@@ -86,6 +87,7 @@ pub(crate) fn variable_analog_draw_commands(
                 DrawingCommands::Analog(AnalogDrawingCommands::Loading),
             );
             return Some(VariableDrawCommands {
+                draw_clock_edges: false,
                 clock_edges: vec![],
                 display_id,
                 local_commands,
@@ -116,6 +118,7 @@ pub(crate) fn variable_analog_draw_commands(
     local_commands.insert(vec![], DrawingCommands::Analog(analog_commands));
 
     Some(VariableDrawCommands {
+        draw_clock_edges: false,
         clock_edges: vec![],
         display_id,
         local_commands,

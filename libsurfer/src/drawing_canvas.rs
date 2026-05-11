@@ -141,6 +141,7 @@ pub struct TxDrawingCommands {
 }
 
 pub(crate) struct VariableDrawCommands {
+    pub(crate) draw_clock_edges: bool,
     pub(crate) clock_edges: Vec<f32>,
     pub(crate) display_id: DisplayedItemRef,
     pub(crate) local_commands: HashMap<Vec<String>, DrawingCommands>,
@@ -366,7 +367,14 @@ fn variable_digital_draw_commands(
             }
         }
     }
+    let draw_clock_edges = match clock_edges.as_slice() {
+        [] => false,
+        [_single] => true,
+        [first, second, ..] => second - first > 20.,
+    };
+
     Some(VariableDrawCommands {
+        draw_clock_edges,
         clock_edges,
         display_id,
         local_commands: local_commands
@@ -427,7 +435,7 @@ impl SystemState {
 
         let num_timestamps = waves.safe_num_timestamps();
         let max_time = num_timestamps.to_f64().unwrap_or(f64::MAX);
-        let mut clock_edges = vec![];
+        let mut clock_edges_by_clock = vec![];
         let viewport = waves.viewports[viewport_idx];
         // Compute which timestamp to draw in each pixel. We'll draw from -extra_draw_width to
         // width + extra_draw_width in order to draw initial transitions outside the screen
@@ -474,12 +482,14 @@ impl SystemState {
             })
             .collect::<Vec<_>>();
 
+        let mut clock_variable_count = 0usize;
         for VariableDrawCommands {
+            draw_clock_edges,
             clock_edges: mut new_clock_edges,
             display_id,
             local_commands,
             mut local_msgs,
-        } in commands
+        } in commands.into_iter()
         {
             msgs.append(&mut local_msgs);
             for (field, val) in local_commands {
@@ -491,8 +501,18 @@ impl SystemState {
                     val,
                 );
             }
-            clock_edges.append(&mut new_clock_edges);
+
+            let is_clock_variable = !new_clock_edges.is_empty();
+            if is_clock_variable {
+                if draw_clock_edges {
+                    clock_edges_by_clock
+                        .push((clock_variable_count, std::mem::take(&mut new_clock_edges)));
+                }
+                clock_variable_count += 1;
+            }
         }
+
+        let clock_edges = self.get_clock_hightlight_data(clock_edges_by_clock);
 
         let ticks = self.get_ticks_for_viewport_idx(waves, viewport_idx, cfg);
 
@@ -983,11 +1003,7 @@ impl SystemState {
     ) {
         let clock_edges = &draw_data.clock_edges;
         let draw_commands = &draw_data.draw_commands;
-        let draw_clock_edges = match clock_edges.as_slice() {
-            [] => false,
-            [_single] => true,
-            [first, second, ..] => second - first > 20.,
-        };
+        let draw_clock_edges = clock_edges.has_edges();
         let draw_clock_rising_marker =
             draw_clock_edges && self.user.config.theme.clock_rising_marker;
         let ticks = &draw_data.ticks;
@@ -1000,12 +1016,7 @@ impl SystemState {
         }
 
         if draw_clock_edges {
-            draw_clock_edge_marks(
-                clock_edges,
-                ctx,
-                &self.user.config,
-                self.clock_highlight_type(),
-            );
+            draw_clock_edge_marks(clock_edges, ctx, &self.user.config);
         }
         let zero_y = (ctx.to_screen)(0., 0.).y;
         for (item_count, drawing_info) in sorted_drawing_infos.iter().copied().enumerate() {
