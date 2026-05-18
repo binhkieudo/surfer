@@ -428,6 +428,11 @@ pub enum Message {
         before: Option<ItemIndex>,
         items: Option<Vec<DisplayedItemRef>>,
     },
+    /// Create a bus signal from the currently selected signals.
+    /// Sources are ordered LSB first (first selected) to MSB last (last selected).
+    CreateBus {
+        name: Option<String>,
+    },
     GroupDissolve(Option<DisplayedItemRef>),
     GroupFold(Option<DisplayedItemRef>),
     GroupUnfold(Option<DisplayedItemRef>),
@@ -499,4 +504,14 @@ pub enum Message {
     FindValueNext,
     /// Navigate to the previous occurrence of the found value
     FindValuePrevious,
+    /// Show the Split Field extraction dialog for the given item
+    ShowSplitFieldDialog(VisibleItemIndex),
+    /// Close the Split Field dialog
+    CloseSplitFieldDialog,
+    /// Extract a bit-slice [start_bit, end_bit] from the given source item
+    ExtractSplitField {
+        source_vidx: VisibleItemIndex,
+        start_bit: u32,
+        end_bit: u32,
+    },
 }

@@ -13,6 +13,10 @@ pub struct Node {
     /// Whether a subtree of this node (if it exists) is shown
     pub unfolded: bool,
     pub selected: bool,
+    /// Selection order counter value, set when item is selected via Ctrl+click.
+    /// Used to determine signal order when creating a bus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_order: Option<usize>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -143,12 +147,18 @@ impl<'a> Iterator for VisibleItemIteratorExtraInfo<'a> {
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct DisplayedItemTree {
     items: Vec<Node>,
+    /// Monotonically increasing counter for tracking selection order.
+    #[serde(skip)]
+    next_selection_order: usize,
 }
 
 impl DisplayedItemTree {
     #[must_use]
     pub fn new() -> Self {
-        DisplayedItemTree { items: vec![] }
+        DisplayedItemTree {
+            items: vec![],
+            next_selection_order: 0,
+        }
     }
 
     #[must_use]
@@ -234,6 +244,7 @@ impl DisplayedItemTree {
                 level: position.level,
                 unfolded: true,
                 selected: false,
+                selection_order: None,
             },
         );
 
@@ -523,6 +534,7 @@ impl DisplayedItemTree {
             let end = self.subtree_end(item);
             for x in &mut self.items[item..end] {
                 x.selected = false;
+                x.selection_order = None;
             }
         }
     }
@@ -532,6 +544,7 @@ impl DisplayedItemTree {
             x.unfolded = unfolded;
             if !unfolded && x.level > 0 {
                 x.selected = false;
+                x.selection_order = None;
             }
         }
     }
@@ -543,13 +556,21 @@ impl DisplayedItemTree {
             x.unfolded = unfolded;
             if !unfolded {
                 x.selected = false;
+                x.selection_order = None;
             }
         }
     }
 
     pub fn xselect(&mut self, vidx: VisibleItemIndex, selected: bool) {
         if let Some(idx) = self.to_displayed(vidx) {
-            self.items[idx.0].selected = selected;
+            let node = &mut self.items[idx.0];
+            node.selected = selected;
+            if selected {
+                node.selection_order = Some(self.next_selection_order);
+                self.next_selection_order += 1;
+            } else {
+                node.selection_order = None;
+            }
         }
     }
 
@@ -557,6 +578,9 @@ impl DisplayedItemTree {
     pub fn xselect_all_visible(&mut self, selected: bool) {
         for x in &mut self.iter_visible_mut() {
             x.selected = selected;
+            if !selected {
+                x.selection_order = None;
+            }
         }
     }
 
@@ -574,7 +598,18 @@ impl DisplayedItemTree {
         };
         for node in self.iter_visible_mut().skip(from).take(to - from) {
             node.selected = selected;
+            if !selected {
+                node.selection_order = None;
+            }
         }
+    }
+
+    /// Returns selected visible items sorted by selection order (earliest first).
+    /// Items without a selection order are placed after ordered items.
+    pub fn iter_visible_selected_ordered(&self) -> Vec<&Node> {
+        let mut selected: Vec<&Node> = self.iter_visible().filter(|n| n.selected).collect();
+        selected.sort_by_key(|n| n.selection_order.unwrap_or(usize::MAX));
+        selected
     }
 
     #[must_use]
@@ -667,6 +702,7 @@ mod tests {
                 level,
                 unfolded,
                 selected,
+                selection_order: None,
             });
         }
         tree

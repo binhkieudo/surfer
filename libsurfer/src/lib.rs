@@ -27,6 +27,7 @@ pub mod file_history;
 pub mod file_watcher;
 pub mod find_value;
 pub mod frame_buffer;
+pub mod split_field;
 pub mod fzcmd;
 pub mod graphics;
 pub mod help;
@@ -860,16 +861,37 @@ impl SystemState {
                         {
                             update_format(displayed_variable, field_ref);
                             redraw = true;
+                        } else if let Some(DisplayedItem::Bus(bus)) =
+                            waves.displayed_items.get_mut(&field_ref.item)
+                        {
+                            bus.format = Some(format.clone());
+                            redraw = true;
+                        } else if let Some(DisplayedItem::SplitField(sf)) =
+                            waves.displayed_items.get_mut(&field_ref.item)
+                        {
+                            sf.format = Some(format.clone());
+                            redraw = true;
                         }
                     }
                     MessageTarget::CurrentSelection => {
                         //If an item is focused, update its format too
-                        if let Some(focused) = focused
-                            && let Some(DisplayedItem::Variable(displayed_variable)) =
+                        if let Some(focused) = focused {
+                            if let Some(DisplayedItem::Variable(displayed_variable)) =
                                 waves.displayed_items.get_mut(&focused)
-                        {
-                            update_format(displayed_variable, DisplayedFieldRef::from(focused));
-                            redraw = true;
+                            {
+                                update_format(displayed_variable, DisplayedFieldRef::from(focused));
+                                redraw = true;
+                            } else if let Some(DisplayedItem::Bus(bus)) =
+                                waves.displayed_items.get_mut(&focused)
+                            {
+                                bus.format = Some(format.clone());
+                                redraw = true;
+                            } else if let Some(DisplayedItem::SplitField(sf)) =
+                                waves.displayed_items.get_mut(&focused)
+                            {
+                                sf.format = Some(format.clone());
+                                redraw = true;
+                            }
                         }
                         for item in waves
                             .items_tree
@@ -882,6 +904,14 @@ impl SystemState {
                                 waves.displayed_items.get_mut(&item)
                             {
                                 update_format(variable, field_ref);
+                            } else if let Some(DisplayedItem::Bus(bus)) =
+                                waves.displayed_items.get_mut(&item)
+                            {
+                                bus.format = Some(format.clone());
+                            } else if let Some(DisplayedItem::SplitField(sf)) =
+                                waves.displayed_items.get_mut(&item)
+                            {
+                                sf.format = Some(format.clone());
                             }
                             redraw = true;
                         }
@@ -1846,21 +1876,22 @@ impl SystemState {
                 self.handle_variable_clipboard_operation(
                     vidx,
                     |waves, item_ref: DisplayedItemRef| {
-                        if let Some(DisplayedItem::Variable(_)) =
-                            waves.displayed_items.get(&item_ref)
-                        {
-                            let field_ref = item_ref.into();
-                            self.get_variable_value(
-                                waves,
-                                &field_ref,
-                                waves
-                                    .cursor
-                                    .as_ref()
-                                    .and_then(num::BigInt::to_biguint)
-                                    .as_ref(),
-                            )
-                        } else {
-                            None
+                        let field_ref: DisplayedFieldRef = item_ref.into();
+                        let cursor = waves
+                            .cursor
+                            .as_ref()
+                            .and_then(num::BigInt::to_biguint);
+                        match waves.displayed_items.get(&item_ref) {
+                            Some(DisplayedItem::Variable(_)) => {
+                                self.get_variable_value(waves, &field_ref, cursor.as_ref())
+                            }
+                            Some(DisplayedItem::Bus(_)) => {
+                                self.get_bus_value(waves, &field_ref, cursor.as_ref())
+                            }
+                            Some(DisplayedItem::SplitField(_)) => {
+                                self.get_split_field_value(waves, &field_ref, cursor.as_ref())
+                            }
+                            _ => None,
                         }
                     },
                 );
@@ -1869,12 +1900,21 @@ impl SystemState {
                 self.handle_variable_clipboard_operation(
                     vidx,
                     |waves, item_ref: DisplayedItemRef| {
-                        if let Some(DisplayedItem::Variable(variable)) =
-                            waves.displayed_items.get(&item_ref)
-                        {
-                            Some(variable.variable_ref.name.clone())
-                        } else {
-                            None
+                        match waves.displayed_items.get(&item_ref) {
+                            Some(DisplayedItem::Variable(variable)) => {
+                                Some(variable.variable_ref.name.clone())
+                            }
+                            Some(DisplayedItem::Bus(bus)) => Some(
+                                bus.manual_name
+                                    .clone()
+                                    .unwrap_or_else(|| bus.display_name.clone()),
+                            ),
+                            Some(DisplayedItem::SplitField(sf)) => Some(
+                                sf.manual_name
+                                    .clone()
+                                    .unwrap_or_else(|| sf.display_name.clone()),
+                            ),
+                            _ => None,
                         }
                     },
                 );
@@ -1883,12 +1923,21 @@ impl SystemState {
                 self.handle_variable_clipboard_operation(
                     vidx,
                     |waves, item_ref: DisplayedItemRef| {
-                        if let Some(DisplayedItem::Variable(variable)) =
-                            waves.displayed_items.get(&item_ref)
-                        {
-                            Some(variable.variable_ref.full_path_string())
-                        } else {
-                            None
+                        match waves.displayed_items.get(&item_ref) {
+                            Some(DisplayedItem::Variable(variable)) => {
+                                Some(variable.variable_ref.full_path_string())
+                            }
+                            Some(DisplayedItem::Bus(bus)) => Some(
+                                bus.manual_name
+                                    .clone()
+                                    .unwrap_or_else(|| bus.display_name.clone()),
+                            ),
+                            Some(DisplayedItem::SplitField(sf)) => Some(
+                                sf.manual_name
+                                    .clone()
+                                    .unwrap_or_else(|| sf.display_name.clone()),
+                            ),
+                            _ => None,
                         }
                     },
                 );
@@ -2030,6 +2079,60 @@ impl SystemState {
                     .items_tree
                     .iter_visible_extra()
                     .find_map(|info| (info.node.item_ref == group_ref).then_some(info.vidx));
+            }
+            Message::CreateBus { name } => {
+                self.save_current_canvas("Create bus".to_owned());
+                self.invalidate_draw_commands();
+                let waves = self.user.waves.as_mut()?;
+
+                // Collect selected Variable items in selection order (LSB first)
+                let ordered_sources: Vec<DisplayedItemRef> = waves
+                    .items_tree
+                    .iter_visible_selected_ordered()
+                    .into_iter()
+                    .filter(|node| {
+                        matches!(
+                            waves.displayed_items.get(&node.item_ref),
+                            Some(crate::displayed_item::DisplayedItem::Variable(_))
+                        )
+                    })
+                    .map(|node| node.item_ref)
+                    .collect();
+
+                if ordered_sources.len() < 2 {
+                    return None;
+                }
+
+                // Generate a default bus name from source signal names
+                let bus_name = name.unwrap_or_else(|| {
+                    let names: Vec<String> = ordered_sources
+                        .iter()
+                        .filter_map(|src| waves.displayed_items.get(src))
+                        .map(|item| item.name())
+                        .collect();
+                    format!("{{{}}}", names.join(", "))
+                });
+
+                let insert_pos = waves
+                    .insert_position(waves.focused_item)
+                    .unwrap_or_else(|| waves.end_insert_position());
+
+                let bus_item = crate::displayed_item::DisplayedItem::Bus(
+                    crate::displayed_item::DisplayedBus {
+                        sources: ordered_sources,
+                        display_name: bus_name,
+                        manual_name: None,
+                        color: None,
+                        background_color: None,
+                        format: None,
+                        height_scaling_factor: None,
+                    },
+                );
+                let bus_ref = waves.insert_item(bus_item, Some(insert_pos), true);
+                waves.focused_item = waves
+                    .items_tree
+                    .iter_visible_extra()
+                    .find_map(|info| (info.node.item_ref == bus_ref).then_some(info.vidx));
             }
             Message::GroupDissolve(item_ref) => {
                 self.save_current_canvas("Dissolve group".to_owned());
@@ -2637,8 +2740,84 @@ impl SystemState {
                     }
                 }
             }
+
+            msg @ (Message::ShowSplitFieldDialog(_)
+            | Message::CloseSplitFieldDialog
+            | Message::ExtractSplitField { .. }) => {
+                self.handle_split_field_message(msg);
+            }
         }
 
+        Some(())
+    }
+
+    // ─── Split Field ────────────────────────────────────────────────────────
+
+    fn handle_split_field_message(&mut self, message: Message) -> Option<()> {
+        use crate::split_field::{SplitFieldDialogState, get_item_total_bits};
+        use crate::displayed_item::{DisplayedItem, DisplayedSplitField};
+
+        match message {
+            Message::ShowSplitFieldDialog(vidx) => {
+                let waves = self.user.waves.as_ref()?;
+                let node = waves.items_tree.get_visible(vidx)?;
+                let item_ref = node.item_ref;
+                let source_name = waves
+                    .displayed_items
+                    .get(&item_ref)
+                    .map(|i| i.name())
+                    .unwrap_or_default();
+                let wave_container = waves.inner.as_waves()?;
+                let total_bits =
+                    get_item_total_bits(waves, wave_container, item_ref).unwrap_or(1);
+                self.user.split_field_dialog_state =
+                    Some(SplitFieldDialogState::new(vidx, source_name, total_bits));
+            }
+
+            Message::CloseSplitFieldDialog => {
+                self.user.split_field_dialog_state = None;
+            }
+
+            Message::ExtractSplitField {
+                source_vidx,
+                start_bit,
+                end_bit,
+            } => {
+                self.save_current_canvas("Extract split field".to_owned());
+                self.invalidate_draw_commands();
+                let waves = self.user.waves.as_mut()?;
+                let node = waves.items_tree.get_visible(source_vidx)?;
+                let source_ref = node.item_ref;
+                let source_name = waves
+                    .displayed_items
+                    .get(&source_ref)
+                    .map(|i| i.name())
+                    .unwrap_or_default();
+                let display_name =
+                    format!("{source_name}[{end_bit}:{start_bit}]");
+                let insert_pos = waves
+                    .insert_position(waves.focused_item)
+                    .unwrap_or_else(|| waves.end_insert_position());
+                let sf_item = DisplayedItem::SplitField(DisplayedSplitField {
+                    source: source_ref,
+                    start_bit,
+                    end_bit,
+                    display_name,
+                    manual_name: None,
+                    color: None,
+                    background_color: None,
+                    format: None,
+                    height_scaling_factor: None,
+                });
+                let sf_ref = waves.insert_item(sf_item, Some(insert_pos), true);
+                waves.focused_item = waves
+                    .items_tree
+                    .iter_visible_extra()
+                    .find_map(|info| (info.node.item_ref == sf_ref).then_some(info.vidx));
+            }
+
+            _ => {}
+        }
         Some(())
     }
 
@@ -2657,66 +2836,210 @@ impl SystemState {
             return vec![];
         };
         let item_ref = node.item_ref;
-        let Some(displayed_item::DisplayedItem::Variable(displayed_variable)) =
-            waves.displayed_items.get(&item_ref)
-        else {
-            return vec![];
-        };
 
-        let variable = &displayed_variable.variable_ref;
-        let Ok(meta) = waves.inner.as_waves().unwrap().variable_meta(variable) else {
-            return vec![];
-        };
+        match waves.displayed_items.get(&item_ref) {
+            Some(displayed_item::DisplayedItem::Variable(displayed_variable)) => {
+                let variable = &displayed_variable.variable_ref;
+                let Ok(meta) = waves.inner.as_waves().unwrap().variable_meta(variable) else {
+                    return vec![];
+                };
 
-        let displayed_field_ref: displayed_item::DisplayedFieldRef = item_ref.into();
-        let translator = waves.variable_translator_with_meta(
-            &displayed_field_ref.without_field(),
-            &self.translators,
-            &meta,
-        );
-
-        let wave_container = waves.inner.as_waves().unwrap();
-
-        let mut occurrences = vec![];
-        let mut current_time = BigUint::zero();
-
-        loop {
-            let Ok(Some(result)) = wave_container.query_variable(variable, &current_time) else {
-                break;
-            };
-
-            let Some((time, val)) = result.current else {
-                break;
-            };
-
-            let translated = translator.translate(&meta, &val).ok();
-            let value_str = translated.and_then(|t| {
-                use crate::translation::TranslationResultExt;
-                let fields = t.format_flat(
-                    &displayed_variable.format,
-                    &displayed_variable.field_formats,
+                let displayed_field_ref: displayed_item::DisplayedFieldRef = item_ref.into();
+                let translator = waves.variable_translator_with_meta(
+                    &displayed_field_ref.without_field(),
                     &self.translators,
+                    &meta,
                 );
-                fields
-                    .iter()
-                    .find(|f| f.names == displayed_field_ref.field)
-                    .and_then(|f| f.value.as_ref().map(|v| v.value.clone()))
-            });
 
-            if value_str.as_deref() == Some(search_value) {
-                if let Some(bigint_time) = time.to_bigint() {
-                    occurrences.push(bigint_time);
+                let wave_container = waves.inner.as_waves().unwrap();
+                let mut occurrences = vec![];
+                let mut current_time = BigUint::zero();
+
+                loop {
+                    let Ok(Some(result)) =
+                        wave_container.query_variable(variable, &current_time)
+                    else {
+                        break;
+                    };
+                    let Some((time, val)) = result.current else {
+                        break;
+                    };
+
+                    let translated = translator.translate(&meta, &val).ok();
+                    let value_str = translated.and_then(|t| {
+                        use crate::translation::TranslationResultExt;
+                        let fields = t.format_flat(
+                            &displayed_variable.format,
+                            &displayed_variable.field_formats,
+                            &self.translators,
+                        );
+                        fields
+                            .iter()
+                            .find(|f| f.names == displayed_field_ref.field)
+                            .and_then(|f| f.value.as_ref().map(|v| v.value.clone()))
+                    });
+
+                    if value_str.as_deref() == Some(search_value) {
+                        if let Some(bigint_time) = time.to_bigint() {
+                            occurrences.push(bigint_time);
+                        }
+                    }
+
+                    match result.next {
+                        Some(next_time) if next_time > current_time => {
+                            current_time = next_time;
+                        }
+                        _ => break,
+                    }
                 }
+
+                occurrences
             }
 
-            match result.next {
-                Some(next_time) if next_time > current_time => {
-                    current_time = next_time;
-                }
-                _ => break,
+            Some(displayed_item::DisplayedItem::Bus(bus)) => {
+                self.find_all_bus_value_occurrences(waves, bus, search_value)
             }
+
+            Some(displayed_item::DisplayedItem::SplitField(sf)) => {
+                self.find_all_split_field_occurrences(waves, item_ref, sf, search_value)
+            }
+
+            _ => vec![],
+        }
+    }
+
+    fn find_all_bus_value_occurrences(
+        &self,
+        waves: &crate::wave_data::WaveData,
+        bus: &crate::displayed_item::DisplayedBus,
+        search_value: &str,
+    ) -> Vec<BigInt> {
+        use num::bigint::ToBigInt as _;
+        use std::collections::BTreeSet;
+
+        let Some(wave_container) = waves.inner.as_waves() else {
+            return vec![];
+        };
+
+        let mut all_times: BTreeSet<u64> = BTreeSet::new();
+        all_times.insert(0);
+        for src_ref in &bus.sources {
+            crate::split_field::collect_change_times(waves, wave_container, *src_ref, &mut all_times);
         }
 
+        let mut occurrences = vec![];
+        for t in all_times {
+            let current_time = num::BigUint::from(t);
+            if let Some(value_str) =
+                self.translate_bus_at(waves, wave_container, bus, &current_time)
+            {
+                if value_str == search_value {
+                    if let Some(bigint_time) = current_time.to_bigint() {
+                        occurrences.push(bigint_time);
+                    }
+                }
+            }
+        }
+        occurrences
+    }
+
+    fn translate_bus_at(
+        &self,
+        waves: &crate::wave_data::WaveData,
+        wave_container: &crate::wave_container::WaveContainer,
+        bus: &crate::displayed_item::DisplayedBus,
+        time: &num::BigUint,
+    ) -> Option<String> {
+        // Compute concatenated value directly (bus is a special case of compute_source_value_at)
+        let mut acc: Option<surfer_translation_types::VariableValue> = None;
+        let mut bit_offset: u32 = 0;
+        let mut total_bits: u32 = 0;
+
+        for src_ref in &bus.sources {
+            let Some(crate::displayed_item::DisplayedItem::Variable(sv)) =
+                waves.displayed_items.get(src_ref)
+            else {
+                continue;
+            };
+            let Ok(meta) = wave_container.variable_meta(&sv.variable_ref) else {
+                continue;
+            };
+            let src_bits = meta.num_bits.unwrap_or(1);
+            total_bits += src_bits;
+            let query = match wave_container.query_variable(&sv.variable_ref, time) {
+                Ok(Some(q)) => q,
+                _ => {
+                    let x = "x".repeat(src_bits as usize);
+                    acc = Some(crate::split_field::concat_with_x_pub(
+                        acc.take(),
+                        x,
+                        bit_offset,
+                    ));
+                    bit_offset += src_bits;
+                    continue;
+                }
+            };
+            if let Some((_, src_val)) = query.current {
+                acc = Some(crate::split_field::concat_values(acc.take(), src_val, src_bits, bit_offset));
+            }
+            bit_offset += src_bits;
+        }
+
+        let val = acc?;
+        crate::split_field::translate_virtual_value(
+            &bus.display_name,
+            total_bits,
+            &val,
+            bus.format.as_ref(),
+            &self.translators,
+        )
+    }
+
+    fn find_all_split_field_occurrences(
+        &self,
+        waves: &crate::wave_data::WaveData,
+        item_ref: crate::displayed_item::DisplayedItemRef,
+        sf: &crate::displayed_item::DisplayedSplitField,
+        search_value: &str,
+    ) -> Vec<BigInt> {
+        use num::bigint::ToBigInt as _;
+        use std::collections::BTreeSet;
+
+        let Some(wave_container) = waves.inner.as_waves() else {
+            return vec![];
+        };
+
+        let mut all_times: BTreeSet<u64> = BTreeSet::new();
+        all_times.insert(0);
+        crate::split_field::collect_change_times(waves, wave_container, sf.source, &mut all_times);
+
+        let slice_bits = sf.end_bit - sf.start_bit + 1;
+        let mut occurrences = vec![];
+        for t in all_times {
+            let current_time = num::BigUint::from(t);
+            let val_opt = crate::split_field::compute_source_value_at(
+                waves,
+                wave_container,
+                item_ref,
+                &current_time,
+                &self.translators,
+            );
+            if let Some((val, _)) = val_opt {
+                if let Some(translated) = crate::split_field::translate_virtual_value(
+                    &sf.display_name,
+                    slice_bits,
+                    &val,
+                    sf.format.as_ref(),
+                    &self.translators,
+                ) {
+                    if translated == search_value {
+                        if let Some(bigint_time) = current_time.to_bigint() {
+                            occurrences.push(bigint_time);
+                        }
+                    }
+                }
+            }
+        }
         occurrences
     }
 

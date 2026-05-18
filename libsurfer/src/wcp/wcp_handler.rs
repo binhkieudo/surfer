@@ -102,6 +102,18 @@ impl SystemState {
                                     DisplayedItem::Group(item) => {
                                         (item.name.clone(), "Group".to_string())
                                     }
+                                    DisplayedItem::Bus(item) => (
+                                        item.manual_name
+                                            .clone()
+                                            .unwrap_or(item.display_name.clone()),
+                                        "Bus".to_string(),
+                                    ),
+                                    DisplayedItem::SplitField(item) => (
+                                        item.manual_name
+                                            .clone()
+                                            .unwrap_or(item.display_name.clone()),
+                                        "SplitField".to_string(),
+                                    ),
                                 };
                                 items.push(ItemInfo {
                                     name,

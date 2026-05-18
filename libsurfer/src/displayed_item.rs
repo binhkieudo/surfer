@@ -66,6 +66,8 @@ pub enum DisplayedItem {
     Placeholder(DisplayedPlaceholder),
     Stream(DisplayedStream),
     Group(DisplayedGroup),
+    Bus(DisplayedBus),
+    SplitField(DisplayedSplitField),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -380,11 +382,65 @@ pub struct DisplayedGroup {
     pub is_open: bool,
 }
 
+/// A bit-slice view of a Variable, Bus, or another SplitField.
+/// Shows bits [start_bit, end_bit] (inclusive, 0 = LSB) of the source.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DisplayedSplitField {
+    pub source: DisplayedItemRef,
+    pub start_bit: u32,
+    pub end_bit: u32,
+    pub display_name: String,
+    pub manual_name: Option<String>,
+    pub color: Option<String>,
+    pub background_color: Option<String>,
+    pub format: Option<String>,
+    pub height_scaling_factor: Option<f32>,
+}
+
+impl DisplayedSplitField {
+    pub fn rich_text(&self, text_color: Color32, style: &Style, layout_job: &mut LayoutJob) {
+        RichText::new(
+            self.manual_name
+                .as_ref()
+                .unwrap_or(&self.display_name)
+                .clone(),
+        )
+        .color(text_color)
+        .append_to(layout_job, style, FontSelection::Default, Align::Center);
+    }
+}
+
 impl DisplayedGroup {
     pub fn rich_text(&self, text_color: Color32, style: &Style, layout_job: &mut LayoutJob) {
         RichText::new(self.name.clone())
             .color(text_color)
             .append_to(layout_job, style, FontSelection::Default, Align::Center);
+    }
+}
+
+/// A virtual bus signal created by concatenating bit fields of multiple signals.
+/// `sources[0]` is the LSB signal, `sources[last]` is the MSB signal.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DisplayedBus {
+    pub sources: Vec<DisplayedItemRef>,
+    pub display_name: String,
+    pub manual_name: Option<String>,
+    pub color: Option<String>,
+    pub background_color: Option<String>,
+    pub format: Option<String>,
+    pub height_scaling_factor: Option<f32>,
+}
+
+impl DisplayedBus {
+    pub fn rich_text(&self, text_color: Color32, style: &Style, layout_job: &mut LayoutJob) {
+        RichText::new(
+            self.manual_name
+                .as_ref()
+                .unwrap_or(&self.display_name)
+                .clone(),
+        )
+        .color(text_color)
+        .append_to(layout_job, style, FontSelection::Default, Align::Center);
     }
 }
 
@@ -399,6 +455,8 @@ impl DisplayedItem {
             DisplayedItem::Placeholder(_) => None,
             DisplayedItem::Stream(stream) => stream.color.as_deref(),
             DisplayedItem::Group(group) => group.color.as_deref(),
+            DisplayedItem::Bus(bus) => bus.color.as_deref(),
+            DisplayedItem::SplitField(sf) => sf.color.as_deref(),
         }
     }
 
@@ -411,6 +469,8 @@ impl DisplayedItem {
             DisplayedItem::Placeholder(placeholder) => placeholder.color.clone_from(color_name),
             DisplayedItem::Stream(stream) => stream.color.clone_from(color_name),
             DisplayedItem::Group(group) => group.color.clone_from(color_name),
+            DisplayedItem::Bus(bus) => bus.color.clone_from(color_name),
+            DisplayedItem::SplitField(sf) => sf.color.clone_from(color_name),
         }
     }
 
@@ -444,6 +504,16 @@ impl DisplayedItem {
                 .unwrap_or(&stream.display_name)
                 .clone(),
             DisplayedItem::Group(group) => group.name.clone(),
+            DisplayedItem::Bus(bus) => bus
+                .manual_name
+                .as_ref()
+                .unwrap_or(&bus.display_name)
+                .clone(),
+            DisplayedItem::SplitField(sf) => sf
+                .manual_name
+                .as_ref()
+                .unwrap_or(&sf.display_name)
+                .clone(),
         }
     }
 
@@ -499,6 +569,12 @@ impl DisplayedItem {
             DisplayedItem::Group(group) => {
                 group.rich_text(color, style, layout_job);
             }
+            DisplayedItem::Bus(bus) => {
+                bus.rich_text(color, style, layout_job);
+            }
+            DisplayedItem::SplitField(sf) => {
+                sf.rich_text(color, style, layout_job);
+            }
         }
     }
 
@@ -525,6 +601,12 @@ impl DisplayedItem {
             DisplayedItem::Group(group) => {
                 group.name = name.unwrap_or_default();
             }
+            DisplayedItem::Bus(bus) => {
+                bus.manual_name = name;
+            }
+            DisplayedItem::SplitField(sf) => {
+                sf.manual_name = name;
+            }
         }
     }
 
@@ -534,6 +616,8 @@ impl DisplayedItem {
             DisplayedItem::Variable(variable) => variable.manual_name.is_some(),
             DisplayedItem::Placeholder(placeholder) => placeholder.manual_name.is_some(),
             DisplayedItem::Stream(stream) => stream.manual_name.is_some(),
+            DisplayedItem::Bus(bus) => bus.manual_name.is_some(),
+            DisplayedItem::SplitField(sf) => sf.manual_name.is_some(),
             DisplayedItem::Divider(_)
             | DisplayedItem::Marker(_)
             | DisplayedItem::TimeLine(_)
@@ -551,6 +635,8 @@ impl DisplayedItem {
             DisplayedItem::Placeholder(_) => None,
             DisplayedItem::Stream(stream) => stream.background_color.as_deref(),
             DisplayedItem::Group(group) => group.background_color.as_deref(),
+            DisplayedItem::Bus(bus) => bus.background_color.as_deref(),
+            DisplayedItem::SplitField(sf) => sf.background_color.as_deref(),
         }
     }
 
@@ -577,6 +663,12 @@ impl DisplayedItem {
             DisplayedItem::Group(group) => {
                 group.background_color.clone_from(color_name);
             }
+            DisplayedItem::Bus(bus) => {
+                bus.background_color.clone_from(color_name);
+            }
+            DisplayedItem::SplitField(sf) => {
+                sf.background_color.clone_from(color_name);
+            }
         }
     }
 
@@ -585,6 +677,8 @@ impl DisplayedItem {
         match self {
             DisplayedItem::Variable(variable) => variable.height_scaling_factor,
             DisplayedItem::Placeholder(placeholder) => placeholder.height_scaling_factor,
+            DisplayedItem::Bus(bus) => bus.height_scaling_factor,
+            DisplayedItem::SplitField(sf) => sf.height_scaling_factor,
             _ => None,
         }
         .unwrap_or(1.0)
@@ -595,6 +689,12 @@ impl DisplayedItem {
             DisplayedItem::Variable(variable) => variable.height_scaling_factor = Some(scale),
             DisplayedItem::Placeholder(placeholder) => {
                 placeholder.height_scaling_factor = Some(scale);
+            }
+            DisplayedItem::Bus(bus) => {
+                bus.height_scaling_factor = Some(scale);
+            }
+            DisplayedItem::SplitField(sf) => {
+                sf.height_scaling_factor = Some(scale);
             }
             _ => {}
         }

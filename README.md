@@ -88,6 +88,25 @@ is available.
 ## Recent Improvements (2026-05-18)
 
 ### UI/UX Enhancements
+
+- ✨ **Create Bus**: Concatenate multiple signals into a virtual bus signal
+  - Hold `Ctrl` and click to select signals in order (first selected = LSB, last = MSB)
+  - Right-click any selected signal → **Group → Create bus**
+  - The new bus signal renders as a multi-bit vector showing the concatenated value
+  - Supports all standard signal operations: move, rename, color, background color, height scaling, remove, **Format**, **Copy**, **Find Value**
+  - Handles X/Z values from source signals in the concatenated result
+
+- ✨ **Split Field**: Extract a bit-slice from any signal, bus, or nested split field
+  - Right-click a Variable, Bus, or Split Field → **Group → Split Field**
+  - A dialog opens with three selection modes:
+    - **Start Bit & End Bit** — specify the LSB index and MSB index directly
+    - **Start Bit & Width** — specify the LSB index and the number of bits
+    - **End Bit & Width** — specify the MSB index and the number of bits
+  - Live preview shows the resulting `[end:start]` range and width as you type
+  - Extracted signal is named `source_name[end:start]` and added to the waveform
+  - Supports recursive splitting (split a split field again)
+  - Supports all standard signal operations: move, rename, color, background color, height scaling, remove, **Format**, **Copy**, **Find Value**, **Split Field**
+
 - ✨ **Custom Zoom Hotkeys**: Added keyboard shortcuts for waveform zoom
   - Press `I` to zoom in (centered on cursor)
   - Press `O` to zoom out (centered on cursor)
@@ -246,6 +265,8 @@ As an indication of the status of the project, here is an incomplete list of sup
   - [x] Loading of script file/commands in running instance
   - [ ] Logging of commands (generation of log file to be executed later)
 - [x] Grouping of variables
+- [x] Virtual bus signal (concatenate multiple signals)
+- [x] Split field (bit-slice extraction from any signal, bus, or split field)
 - [ ] Computed variables, e.g., `a >= 100`
 - [ ] Clock period time unit
 - [x] Configurable color schemes

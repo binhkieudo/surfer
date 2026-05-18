@@ -130,6 +130,22 @@ pub struct PlaceholderDrawingInfo {
     pub bottom: f32,
 }
 
+#[derive(Debug)]
+pub struct BusDrawingInfo {
+    pub displayed_field_ref: DisplayedFieldRef,
+    pub vidx: VisibleItemIndex,
+    pub top: f32,
+    pub bottom: f32,
+}
+
+#[derive(Debug)]
+pub struct SplitFieldDrawingInfoEntry {
+    pub displayed_field_ref: DisplayedFieldRef,
+    pub vidx: VisibleItemIndex,
+    pub top: f32,
+    pub bottom: f32,
+}
+
 pub enum ItemDrawingInfo {
     Variable(VariableDrawingInfo),
     Divider(DividerDrawingInfo),
@@ -138,43 +154,51 @@ pub enum ItemDrawingInfo {
     Stream(StreamDrawingInfo),
     Group(GroupDrawingInfo),
     Placeholder(PlaceholderDrawingInfo),
+    Bus(BusDrawingInfo),
+    SplitField(SplitFieldDrawingInfoEntry),
 }
 
 impl ItemDrawingInfo {
     #[must_use]
     pub fn top(&self) -> f32 {
         match self {
-            ItemDrawingInfo::Variable(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::Divider(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::Marker(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::TimeLine(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::Stream(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::Group(drawing_info) => drawing_info.top,
-            ItemDrawingInfo::Placeholder(drawing_info) => drawing_info.top,
+            ItemDrawingInfo::Variable(d) => d.top,
+            ItemDrawingInfo::Divider(d) => d.top,
+            ItemDrawingInfo::Marker(d) => d.top,
+            ItemDrawingInfo::TimeLine(d) => d.top,
+            ItemDrawingInfo::Stream(d) => d.top,
+            ItemDrawingInfo::Group(d) => d.top,
+            ItemDrawingInfo::Placeholder(d) => d.top,
+            ItemDrawingInfo::Bus(d) => d.top,
+            ItemDrawingInfo::SplitField(d) => d.top,
         }
     }
     #[must_use]
     pub fn bottom(&self) -> f32 {
         match self {
-            ItemDrawingInfo::Variable(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::Divider(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::Marker(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::TimeLine(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::Stream(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::Group(drawing_info) => drawing_info.bottom,
-            ItemDrawingInfo::Placeholder(drawing_info) => drawing_info.bottom,
+            ItemDrawingInfo::Variable(d) => d.bottom,
+            ItemDrawingInfo::Divider(d) => d.bottom,
+            ItemDrawingInfo::Marker(d) => d.bottom,
+            ItemDrawingInfo::TimeLine(d) => d.bottom,
+            ItemDrawingInfo::Stream(d) => d.bottom,
+            ItemDrawingInfo::Group(d) => d.bottom,
+            ItemDrawingInfo::Placeholder(d) => d.bottom,
+            ItemDrawingInfo::Bus(d) => d.bottom,
+            ItemDrawingInfo::SplitField(d) => d.bottom,
         }
     }
     #[must_use]
     pub fn vidx(&self) -> VisibleItemIndex {
         match self {
-            ItemDrawingInfo::Variable(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::Divider(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::Marker(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::TimeLine(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::Stream(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::Group(drawing_info) => drawing_info.vidx,
-            ItemDrawingInfo::Placeholder(drawing_info) => drawing_info.vidx,
+            ItemDrawingInfo::Variable(d) => d.vidx,
+            ItemDrawingInfo::Divider(d) => d.vidx,
+            ItemDrawingInfo::Marker(d) => d.vidx,
+            ItemDrawingInfo::TimeLine(d) => d.vidx,
+            ItemDrawingInfo::Stream(d) => d.vidx,
+            ItemDrawingInfo::Group(d) => d.vidx,
+            ItemDrawingInfo::Placeholder(d) => d.vidx,
+            ItemDrawingInfo::Bus(d) => d.vidx,
+            ItemDrawingInfo::SplitField(d) => d.vidx,
         }
     }
 }
@@ -352,6 +376,10 @@ impl SystemState {
 
         if let Some(find_state) = &mut self.user.find_value_state {
             crate::find_value::draw_find_value_dialog(find_state, ui, &mut msgs);
+        }
+
+        if let Some(sf_state) = &mut self.user.split_field_dialog_state {
+            crate::split_field::draw_split_field_dialog(sf_state, ui, &mut msgs);
         }
 
         if self
@@ -723,7 +751,10 @@ impl SystemState {
         let base_row_height = self.user.config.layout.waveforms_line_height
             + 2.0 * self.user.config.layout.waveforms_gap;
         match displayed_item {
-            DisplayedItem::Variable(_) | DisplayedItem::Placeholder(_) => {
+            DisplayedItem::Variable(_)
+            | DisplayedItem::Placeholder(_)
+            | DisplayedItem::Bus(_)
+            | DisplayedItem::SplitField(_) => {
                 self.user.config.layout.waveforms_line_height
                     * displayed_item.height_scaling_factor()
                     + 2.0 * self.user.config.layout.waveforms_gap
@@ -920,7 +951,7 @@ impl SystemState {
                     };
 
                     let levels_to_force_expand =
-                        if matches!(displayed_item, DisplayedItem::Variable(_)) {
+                        if matches!(displayed_item, DisplayedItem::Variable(_) | DisplayedItem::Bus(_) | DisplayedItem::SplitField(_)) {
                             self.items_to_expand
                                 .borrow()
                                 .iter()
@@ -950,7 +981,9 @@ impl SystemState {
                         | DisplayedItem::Placeholder(_)
                         | DisplayedItem::TimeLine(_)
                         | DisplayedItem::Stream(_)
-                        | DisplayedItem::Group(_) => self.desired_item_row_height(displayed_item),
+                        | DisplayedItem::Group(_)
+                        | DisplayedItem::Bus(_)
+                        | DisplayedItem::SplitField(_) => self.desired_item_row_height(displayed_item),
                     };
                     let min = Pos2::new(background_rect.left(), row_top);
                     let max = Pos2::new(background_rect.right(), row_top + row_height);
@@ -995,6 +1028,26 @@ impl SystemState {
                             &displayed_variable.info,
                             row_ui,
                             levels_to_force_expand,
+                            alignment,
+                            background_color,
+                        ),
+                        DisplayedItem::Bus(_) => self.draw_bus(
+                            msgs,
+                            vidx,
+                            displayed_item,
+                            *item_ref,
+                            &mut item_offsets,
+                            row_ui,
+                            alignment,
+                            background_color,
+                        ),
+                        DisplayedItem::SplitField(_) => self.draw_split_field_item(
+                            msgs,
+                            vidx,
+                            displayed_item,
+                            *item_ref,
+                            &mut item_offsets,
+                            row_ui,
                             alignment,
                             background_color,
                         ),
@@ -1289,6 +1342,107 @@ impl SystemState {
         }
     }
 
+    /// Draw a bus item in the item list (renders like a vector variable row).
+    #[allow(clippy::too_many_arguments)]
+    fn draw_bus(
+        &self,
+        msgs: &mut Vec<Message>,
+        vidx: VisibleItemIndex,
+        displayed_item: &DisplayedItem,
+        displayed_id: DisplayedItemRef,
+        drawing_infos: &mut Vec<ItemDrawingInfo>,
+        ui: &mut Ui,
+        alignment: Align,
+        background_color: Color32,
+    ) -> Rect {
+        let wave_top_padding = self.user.config.layout.waveforms_gap;
+        let displayed_field_ref = DisplayedFieldRef {
+            item: displayed_id,
+            field: vec![],
+        };
+        let desired_height = self.desired_item_row_height(displayed_item);
+        let precomputed_bounds = Some((ui.max_rect().top(), ui.max_rect().bottom()));
+        let row_top = ui.cursor().top();
+        let row = ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), desired_height),
+            Layout::top_down(alignment).with_cross_justify(true),
+            |ui| {
+                ui.add_space(wave_top_padding);
+                self.draw_item_label(vidx, displayed_id, displayed_item, None, msgs, ui, None, background_color)
+            },
+        );
+        let fixed_row_rect = Self::clamp_rect_to_bounds(
+            Rect::from_min_max(
+                Pos2::new(row.response.rect.min.x, row_top),
+                Pos2::new(row.response.rect.max.x, row_top + desired_height),
+            ),
+            precomputed_bounds,
+        );
+        self.draw_drag_source(msgs, vidx, &row.inner, ui.input(|e| e.modifiers));
+        drawing_infos.push(ItemDrawingInfo::Bus(BusDrawingInfo {
+            displayed_field_ref,
+            vidx,
+            top: fixed_row_rect.top(),
+            bottom: fixed_row_rect.bottom(),
+        }));
+        fixed_row_rect
+    }
+
+    /// Draw a split-field item (bit-slice view), rendered like a vector variable row.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_split_field_item(
+        &self,
+        msgs: &mut Vec<Message>,
+        vidx: VisibleItemIndex,
+        displayed_item: &DisplayedItem,
+        displayed_id: DisplayedItemRef,
+        drawing_infos: &mut Vec<ItemDrawingInfo>,
+        ui: &mut Ui,
+        alignment: Align,
+        background_color: Color32,
+    ) -> Rect {
+        let wave_top_padding = self.user.config.layout.waveforms_gap;
+        let displayed_field_ref = DisplayedFieldRef {
+            item: displayed_id,
+            field: vec![],
+        };
+        let desired_height = self.desired_item_row_height(displayed_item);
+        let precomputed_bounds = Some((ui.max_rect().top(), ui.max_rect().bottom()));
+        let row_top = ui.cursor().top();
+        let row = ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), desired_height),
+            Layout::top_down(alignment).with_cross_justify(true),
+            |ui| {
+                ui.add_space(wave_top_padding);
+                self.draw_item_label(
+                    vidx,
+                    displayed_id,
+                    displayed_item,
+                    None,
+                    msgs,
+                    ui,
+                    None,
+                    background_color,
+                )
+            },
+        );
+        let fixed_row_rect = Self::clamp_rect_to_bounds(
+            Rect::from_min_max(
+                Pos2::new(row.response.rect.min.x, row_top),
+                Pos2::new(row.response.rect.max.x, row_top + desired_height),
+            ),
+            precomputed_bounds,
+        );
+        self.draw_drag_source(msgs, vidx, &row.inner, ui.input(|e| e.modifiers));
+        drawing_infos.push(ItemDrawingInfo::SplitField(SplitFieldDrawingInfoEntry {
+            displayed_field_ref,
+            vidx,
+            top: fixed_row_rect.top(),
+            bottom: fixed_row_rect.bottom(),
+        }));
+        fixed_row_rect
+    }
+
     fn draw_drag_target(
         &self,
         msgs: &mut Vec<Message>,
@@ -1398,7 +1552,10 @@ impl SystemState {
                 &self.user.config.theme.selected_elements_colors
             } else if matches!(
                 displayed_item,
-                DisplayedItem::Variable(_) | DisplayedItem::Placeholder(_)
+                DisplayedItem::Variable(_)
+                    | DisplayedItem::Placeholder(_)
+                    | DisplayedItem::Bus(_)
+                    | DisplayedItem::SplitField(_)
             ) {
                 &ThemeColorPair {
                     background: background_color,
@@ -1663,6 +1820,16 @@ impl SystemState {
                     "draw_plain_item must not be called with a Variable - use draw_variable instead"
                 )
             }
+            &DisplayedItem::Bus(_) => {
+                panic!(
+                    "draw_plain_item must not be called with a Bus - use draw_bus instead"
+                )
+            }
+            &DisplayedItem::SplitField(_) => {
+                panic!(
+                    "draw_plain_item must not be called with a SplitField - use draw_split_field_item instead"
+                )
+            }
         }
         fixed_row_rect
     }
@@ -1841,6 +2008,74 @@ impl SystemState {
                     | ItemDrawingInfo::Placeholder(_) => {
                         ui.label("");
                     }
+                    ItemDrawingInfo::Bus(bus_info) => {
+                        let waveforms_gap = self.user.config.layout.waveforms_gap;
+                        let waveform_height =
+                            (bus_info.bottom - bus_info.top - 2.0 * waveforms_gap).max(1.0);
+                        if ucursor.as_ref().is_none() {
+                            ui.label("");
+                            continue;
+                        }
+                        let v = self.get_bus_value(
+                            waves,
+                            &bus_info.displayed_field_ref,
+                            ucursor.as_ref(),
+                        );
+                        if let Some(v) = v {
+                            ui.add_space(waveforms_gap);
+                            ui.label(
+                                RichText::new(v)
+                                    .color(
+                                        self.user.config.theme.get_best_text_color(backgroundcolor),
+                                    )
+                                    .line_height(Some(waveform_height)),
+                            )
+                            .context_menu(|ui| {
+                                self.item_context_menu(
+                                    None,
+                                    msgs,
+                                    ui,
+                                    bus_info.vidx,
+                                    true,
+                                    crate::message::MessageTarget::CurrentSelection,
+                                );
+                            });
+                        }
+                    }
+                    ItemDrawingInfo::SplitField(sf_info) => {
+                        let waveforms_gap = self.user.config.layout.waveforms_gap;
+                        let waveform_height =
+                            (sf_info.bottom - sf_info.top - 2.0 * waveforms_gap).max(1.0);
+                        if ucursor.as_ref().is_none() {
+                            ui.label("");
+                            continue;
+                        }
+                        let v = self.get_split_field_value(
+                            waves,
+                            &sf_info.displayed_field_ref,
+                            ucursor.as_ref(),
+                        );
+                        if let Some(v) = v {
+                            ui.add_space(waveforms_gap);
+                            ui.label(
+                                RichText::new(v)
+                                    .color(
+                                        self.user.config.theme.get_best_text_color(backgroundcolor),
+                                    )
+                                    .line_height(Some(waveform_height)),
+                            )
+                            .context_menu(|ui| {
+                                self.item_context_menu(
+                                    None,
+                                    msgs,
+                                    ui,
+                                    sf_info.vidx,
+                                    true,
+                                    crate::message::MessageTarget::CurrentSelection,
+                                );
+                            });
+                        }
+                    }
                 }
             }
             Self::add_padding_for_last_item(
@@ -1928,6 +2163,157 @@ impl SystemState {
             },
             TransitionValue::Next => curr, // This will never happen due to the earlier check
         }
+    }
+
+    pub fn get_bus_value(
+        &self,
+        waves: &WaveData,
+        displayed_field_ref: &DisplayedFieldRef,
+        ucursor: Option<&num::BigUint>,
+    ) -> Option<String> {
+        use std::ops::Shl;
+        use surfer_translation_types::{
+            ScopeRef as TyScopeRef, VariableEncoding, VariableMeta as TyVariableMeta,
+            VariableRef as TyVariableRef,
+        };
+
+        let ucursor = ucursor?;
+        let DisplayedItem::Bus(bus) =
+            waves.displayed_items.get(&displayed_field_ref.item)?
+        else {
+            return None;
+        };
+        let wave_container = waves.inner.as_waves()?;
+
+        let mut concat_value: Option<VariableValue> = None;
+        let mut bit_offset: u32 = 0;
+        let mut total_bits: u32 = 0;
+
+        for src_ref in &bus.sources {
+            let Some(DisplayedItem::Variable(src_var)) = waves.displayed_items.get(src_ref) else {
+                continue;
+            };
+            let Ok(meta) = wave_container.variable_meta(&src_var.variable_ref) else {
+                continue;
+            };
+            let src_bits = meta.num_bits.unwrap_or(1);
+            total_bits += src_bits;
+
+            let query = match wave_container.query_variable(&src_var.variable_ref, ucursor) {
+                Ok(Some(q)) => q,
+                _ => {
+                    let x_bits = "x".repeat(src_bits as usize);
+                    concat_value = Some(match concat_value.take() {
+                        None => VariableValue::String(x_bits),
+                        Some(VariableValue::String(s)) => VariableValue::String(x_bits + &s),
+                        Some(VariableValue::BigUint(u)) => {
+                            let existing_bits =
+                                format!("{u:0>width$b}", width = bit_offset as usize);
+                            VariableValue::String(x_bits + &existing_bits)
+                        }
+                    });
+                    bit_offset += src_bits;
+                    continue;
+                }
+            };
+
+            if let Some((_, src_val)) = query.current {
+                concat_value = Some(match (concat_value.take(), src_val) {
+                    (None, VariableValue::BigUint(v)) => VariableValue::BigUint(v),
+                    (Some(VariableValue::BigUint(acc)), VariableValue::BigUint(v)) => {
+                        VariableValue::BigUint(acc | v.shl(bit_offset as usize))
+                    }
+                    (None, VariableValue::String(s)) => VariableValue::String(
+                        surfer_translation_types::extend_string(&s, src_bits),
+                    ),
+                    (Some(VariableValue::String(acc_str)), VariableValue::BigUint(v)) => {
+                        let v_bits = format!("{v:0>width$b}", width = src_bits as usize);
+                        VariableValue::String(v_bits + &acc_str)
+                    }
+                    (Some(VariableValue::BigUint(acc)), VariableValue::String(s)) => {
+                        let acc_bits = format!("{acc:0>width$b}", width = bit_offset as usize);
+                        let padded = surfer_translation_types::extend_string(&s, src_bits);
+                        VariableValue::String(padded + &acc_bits)
+                    }
+                    (Some(VariableValue::String(acc_str)), VariableValue::String(s)) => {
+                        let padded = surfer_translation_types::extend_string(&s, src_bits);
+                        VariableValue::String(padded + &acc_str)
+                    }
+                });
+            }
+            bit_offset += src_bits;
+        }
+
+        let concat_val = concat_value?;
+
+        let dummy_scope: TyScopeRef<crate::wave_container::ScopeId> = TyScopeRef {
+            strs: vec![],
+            id: crate::wave_container::ScopeId::None,
+        };
+        let dummy_var_ref: TyVariableRef<
+            crate::wave_container::VarId,
+            crate::wave_container::ScopeId,
+        > = TyVariableRef {
+            path: dummy_scope,
+            name: bus.display_name.clone(),
+            id: crate::wave_container::VarId::None,
+            index: None,
+        };
+        let bus_meta: crate::wave_container::VariableMeta = TyVariableMeta {
+            var: dummy_var_ref,
+            num_bits: Some(total_bits),
+            variable_type: None,
+            variable_type_name: None,
+            index: None,
+            direction: None,
+            enum_map: Default::default(),
+            encoding: VariableEncoding::BitVector,
+        };
+
+        let translator = crate::wave_data::variable_translator(
+            bus.format.as_ref(),
+            &[],
+            &self.translators,
+            || Ok(bus_meta.clone()),
+        );
+
+        let translated = translator.translate(&bus_meta, &concat_val).ok()?;
+        let fields = translated.format_flat(&bus.format, &[], &self.translators);
+        let root = fields.iter().find(|r| r.names.is_empty())?;
+        match &root.value {
+            Some(tv) => Some(tv.value.clone()),
+            None => Some("-".to_string()),
+        }
+    }
+
+    pub fn get_split_field_value(
+        &self,
+        waves: &WaveData,
+        displayed_field_ref: &DisplayedFieldRef,
+        ucursor: Option<&num::BigUint>,
+    ) -> Option<String> {
+        let ucursor = ucursor?;
+        let DisplayedItem::SplitField(sf) =
+            waves.displayed_items.get(&displayed_field_ref.item)?
+        else {
+            return None;
+        };
+        let wave_container = waves.inner.as_waves()?;
+        let (val, _) = crate::split_field::compute_source_value_at(
+            waves,
+            wave_container,
+            displayed_field_ref.item,
+            ucursor,
+            &self.translators,
+        )?;
+        let slice_bits = sf.end_bit - sf.start_bit + 1;
+        crate::split_field::translate_virtual_value(
+            &sf.display_name,
+            slice_bits,
+            &val,
+            sf.format.as_ref(),
+            &self.translators,
+        )
     }
 
     fn translate_query_result(

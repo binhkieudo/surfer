@@ -19,7 +19,7 @@ use crate::{
     SystemState,
     clock_highlighting::clock_highlight_type_menu,
     config::ArrowKeyBindings,
-    displayed_item::{DisplayedFieldRef, DisplayedItem},
+    displayed_item::{DisplayedFieldRef, DisplayedItem, DisplayedItemRef},
     file_dialog::OpenMode,
     message::Message,
     time::{timeformat_menu, timeunit_menu},
@@ -547,6 +547,10 @@ impl SystemState {
                 field: path.field.clone(),
             };
             self.add_format_menu(&dfr, clicked_item, path, msgs, ui, group_target);
+        } else if let DisplayedItem::Bus(bus) = clicked_item {
+            self.add_bus_format_menu(clicked_item_ref, bus.format.as_deref(), msgs, ui);
+        } else if let DisplayedItem::SplitField(sf) = clicked_item {
+            self.add_bus_format_menu(clicked_item_ref, sf.format.as_deref(), msgs, ui);
         }
 
         ui.menu_button("Color", |ui| {
@@ -588,6 +592,19 @@ impl SystemState {
                     msgs.push(Message::ItemBackgroundColorChange(group_target, None));
                 });
         });
+
+        if matches!(clicked_item, DisplayedItem::Bus(_) | DisplayedItem::SplitField(_)) {
+            ui.menu_button("Height", |ui| {
+                let selected_size = clicked_item.height_scaling_factor();
+                for size in &self.user.config.layout.waveforms_line_height_multiples {
+                    ui.radio(selected_size == *size, format!("{size}"))
+                        .clicked()
+                        .then(|| {
+                            msgs.push(Message::ItemHeightScalingFactorChange(group_target, *size));
+                        });
+                }
+            });
+        }
 
         if let DisplayedItem::Variable(variable) = clicked_item {
             ui.menu_button("Name", |ui| {
@@ -727,6 +744,22 @@ impl SystemState {
                     ));
                 }
             });
+        } else if matches!(clicked_item, DisplayedItem::Bus(_) | DisplayedItem::SplitField(_)) {
+            if ui.button("Find Value").clicked() {
+                msgs.push(Message::ShowFindValueDialog(vidx));
+            }
+            ui.menu_button("Copy", |ui| {
+                if waves.cursor.is_some() && ui.button("Value").clicked() {
+                    msgs.push(Message::VariableValueToClipbord(MessageTarget::Explicit(
+                        vidx,
+                    )));
+                }
+                if ui.button("Name").clicked() {
+                    msgs.push(Message::VariableNameToClipboard(MessageTarget::Explicit(
+                        vidx,
+                    )));
+                }
+            });
         }
         ui.separator();
         ui.menu_button("Insert", |ui| {
@@ -751,6 +784,29 @@ impl SystemState {
                     before: Some(info.idx),
                     items: None,
                 });
+            }
+
+            let selected_variables_count = waves
+                .items_tree
+                .iter_visible_selected_ordered()
+                .into_iter()
+                .filter(|node| {
+                    matches!(
+                        waves.displayed_items.get(&node.item_ref),
+                        Some(crate::displayed_item::DisplayedItem::Variable(_))
+                    )
+                })
+                .count();
+            if selected_variables_count >= 2 && ui.button("Create bus").clicked() {
+                msgs.push(Message::CreateBus { name: None });
+            }
+
+            if matches!(
+                clicked_item,
+                DisplayedItem::Variable(_) | DisplayedItem::Bus(_) | DisplayedItem::SplitField(_)
+            ) && ui.button("Split Field").clicked()
+            {
+                msgs.push(Message::ShowSplitFieldDialog(vidx));
             }
             if matches!(clicked_item, DisplayedItem::Group(_)) {
                 if ui.button("Dissolve").clicked() {
@@ -951,6 +1007,38 @@ impl SystemState {
                         menu_entry(ui, name);
                     }
                 });
+            }
+        });
+    }
+
+    fn add_bus_format_menu(
+        &self,
+        clicked_item_ref: DisplayedItemRef,
+        selected_format: Option<&str>,
+        msgs: &mut Vec<Message>,
+        ui: &mut Ui,
+    ) {
+        let mut names = self.translators.basic_translator_names();
+        names.sort_by(|a, b| numeric_sort::cmp(a, b));
+
+        let mut menu_entry = |ui: &mut Ui, name: &str| {
+            ui.radio(selected_format == Some(name), name)
+                .clicked()
+                .then(|| {
+                    msgs.push(Message::VariableFormatChange(
+                        MessageTarget::Explicit(DisplayedFieldRef {
+                            item: clicked_item_ref,
+                            field: vec![],
+                        }),
+                        name.to_string(),
+                    ));
+                });
+        };
+
+        ui.menu_button("Format", |ui| {
+            ui.set_min_width(180.0);
+            for name in names {
+                menu_entry(ui, name);
             }
         });
     }

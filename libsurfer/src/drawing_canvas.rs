@@ -22,7 +22,8 @@ use crate::clock_highlighting::draw_clock_edge_marks;
 use crate::config::SurferTheme;
 use crate::data_container::DataContainer;
 use crate::displayed_item::{
-    AnalogSettings, DisplayedFieldRef, DisplayedItemRef, DisplayedVariable,
+    AnalogSettings, DisplayedBus, DisplayedFieldRef, DisplayedItem, DisplayedItemRef,
+    DisplayedSplitField, DisplayedVariable,
 };
 use crate::time::TimeFormatter;
 use crate::tooltips::handle_transaction_tooltip;
@@ -33,7 +34,6 @@ use crate::wave_container::{QueryResult, VariableRefExt};
 use crate::wave_data::WaveData;
 use crate::{
     CachedDrawData, CachedTransactionDrawData, CachedWaveDrawData, Message, SystemState,
-    displayed_item::DisplayedItem,
 };
 
 /// Information about values to mimic dinotrace's special drawing of all-0 and all-1 values
@@ -146,6 +146,332 @@ pub(crate) struct VariableDrawCommands {
     pub(crate) display_id: DisplayedItemRef,
     pub(crate) local_commands: HashMap<Vec<String>, DrawingCommands>,
     pub(crate) local_msgs: Vec<Message>,
+}
+
+/// Generate draw commands for a bus (concatenated bit fields) signal.
+fn bus_draw_commands(
+    bus: &DisplayedBus,
+    display_id: DisplayedItemRef,
+    timestamps: &[(f32, num::BigUint)],
+    waves: &WaveData,
+    translators: &crate::translation::TranslatorList,
+) -> Option<VariableDrawCommands> {
+    use std::ops::Shl;
+    use surfer_translation_types::{
+        ScopeRef as TyScopeRef, VariableEncoding, VariableMeta as TyVariableMeta,
+        VariableRef as TyVariableRef,
+    };
+
+    let wave_container = waves.inner.as_waves()?;
+
+    // Collect source variables and their metadata (LSB first)
+    let mut source_infos: Vec<(
+        &crate::wave_container::VariableRef,
+        crate::wave_container::VariableMeta,
+    )> = Vec::new();
+
+    for src_ref in &bus.sources {
+        let Some(DisplayedItem::Variable(src_var)) = waves.displayed_items.get(src_ref) else {
+            continue;
+        };
+        let Ok(meta) = wave_container.variable_meta(&src_var.variable_ref) else {
+            continue;
+        };
+        // Only include loaded variables
+        if wave_container
+            .signal_id(&src_var.variable_ref)
+            .ok()
+            .map_or(true, |id| !wave_container.is_signal_loaded(&id))
+        {
+            continue;
+        }
+        source_infos.push((&src_var.variable_ref, meta));
+    }
+
+    if source_infos.is_empty() {
+        return None;
+    }
+
+    // Compute total bit width (LSB first order)
+    let bit_widths: Vec<u32> = source_infos
+        .iter()
+        .map(|(_, meta)| meta.num_bits.unwrap_or(1))
+        .collect();
+    let total_bits: u32 = bit_widths.iter().sum();
+
+    // Create a synthetic VariableMeta for the bus translator
+    let dummy_scope: TyScopeRef<crate::wave_container::ScopeId> = TyScopeRef {
+        strs: vec![],
+        id: crate::wave_container::ScopeId::None,
+    };
+    let dummy_var_ref: TyVariableRef<crate::wave_container::VarId, crate::wave_container::ScopeId> =
+        TyVariableRef {
+            path: dummy_scope,
+            name: bus.display_name.clone(),
+            id: crate::wave_container::VarId::None,
+            index: None,
+        };
+    let bus_meta: crate::wave_container::VariableMeta = TyVariableMeta {
+        var: dummy_var_ref,
+        num_bits: Some(total_bits),
+        variable_type: None,
+        variable_type_name: None,
+        index: None,
+        direction: None,
+        enum_map: Default::default(),
+        encoding: VariableEncoding::BitVector,
+    };
+
+    let displayed_field_ref = DisplayedFieldRef {
+        item: display_id,
+        field: vec![],
+    };
+    let translator = crate::wave_data::variable_translator(
+        bus.format.as_ref(),
+        &[],
+        translators,
+        || Ok(bus_meta.clone()),
+    );
+    let info = translator.variable_info(&bus_meta).unwrap();
+
+    let mut local_commands: HashMap<Vec<String>, DigitalDrawingCommands> = HashMap::new();
+    let mut prev_values: HashMap<Vec<String>, Option<surfer_translation_types::TranslatedValue>> =
+        HashMap::new();
+    let mut local_msgs = Vec::new();
+
+    let end_pixel = timestamps.iter().last().map(|t| t.0).unwrap_or_default();
+    let start_pixel = timestamps.get(1).map(|t| t.0).unwrap_or_default();
+
+    for ((_, prev_time), (pixel, time)) in timestamps.iter().zip(timestamps.iter().skip(1)) {
+        let is_last_timestep = pixel == &end_pixel;
+        let is_first_timestep = pixel == &start_pixel;
+
+        // Concatenate values from all sources (LSB first: sources[0] = LSB)
+        let mut concat_value: Option<VariableValue> = None;
+        let mut bit_offset: u32 = 0;
+        let mut any_changed = false;
+
+        for (src_idx, (var_ref, _src_meta)) in source_infos.iter().enumerate() {
+            let src_bits = bit_widths[src_idx];
+            let query = match wave_container.query_variable(var_ref, time) {
+                Ok(Some(q)) => q,
+                _ => {
+                    // Source not available - treat as unknown
+                    let x_bits = "x".repeat(src_bits as usize);
+                    concat_value = Some(match concat_value.take() {
+                        None => VariableValue::String(x_bits),
+                        Some(VariableValue::String(s)) => {
+                            VariableValue::String(x_bits + &s)
+                        }
+                        Some(VariableValue::BigUint(u)) => {
+                            let existing_bits = format!("{u:0>width$b}", width = bit_offset as usize);
+                            VariableValue::String(x_bits + &existing_bits)
+                        }
+                    });
+                    bit_offset += src_bits;
+                    continue;
+                }
+            };
+
+            // Check if this source changed
+            if &query.current.as_ref().map(|(t, _)| t.clone()).unwrap_or_default() >= prev_time {
+                any_changed = true;
+            }
+
+            if let Some((_, src_val)) = query.current {
+                concat_value = Some(match (concat_value.take(), src_val) {
+                    // Both BigUint: concatenate numerically (new source goes into higher bits)
+                    (None, VariableValue::BigUint(v)) => VariableValue::BigUint(v),
+                    (Some(VariableValue::BigUint(acc)), VariableValue::BigUint(v)) => {
+                        // acc holds lower bits (accumulated), v holds the new source at bit_offset
+                        // MSB signal contributes to higher bits: acc | (v << bit_offset)
+                        VariableValue::BigUint(acc | v.shl(bit_offset as usize))
+                    }
+                    // Any string: work in string space (string is MSB-first)
+                    (None, VariableValue::String(s)) => {
+                        let padded = surfer_translation_types::extend_string(
+                            &s,
+                            src_bits,
+                        );
+                        VariableValue::String(padded)
+                    }
+                    (Some(VariableValue::String(acc_str)), VariableValue::BigUint(v)) => {
+                        // acc_str is the MSB side (already processed), new source is LSB side
+                        // In string representation: higher-index bits come first
+                        let v_bits = format!("{v:0>width$b}", width = src_bits as usize);
+                        VariableValue::String(v_bits + &acc_str)
+                    }
+                    (Some(VariableValue::BigUint(acc)), VariableValue::String(s)) => {
+                        // New source (higher bits) is string, existing acc is lower bits as BigUint
+                        let acc_bits = format!("{acc:0>width$b}", width = bit_offset as usize);
+                        let padded = surfer_translation_types::extend_string(
+                            &s,
+                            src_bits,
+                        );
+                        VariableValue::String(padded + &acc_bits)
+                    }
+                    (Some(VariableValue::String(acc_str)), VariableValue::String(s)) => {
+                        let padded = surfer_translation_types::extend_string(
+                            &s,
+                            src_bits,
+                        );
+                        VariableValue::String(padded + &acc_str)
+                    }
+                });
+            }
+            bit_offset += src_bits;
+        }
+
+        let Some(concat_val) = concat_value else {
+            continue;
+        };
+
+        if !any_changed && !is_first_timestep && !is_last_timestep {
+            continue;
+        }
+
+        let translation_result = match translator.translate(&bus_meta, &concat_val) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Bus translator failed: {e:#}");
+                local_msgs.push(Message::ResetVariableFormat(displayed_field_ref.clone()));
+                return None;
+            }
+        };
+
+        let fields = translation_result.format_flat(
+            &bus.format,
+            &[],
+            translators,
+        );
+
+        for SubFieldFlatTranslationResult { names, value } in fields {
+            let entry = local_commands.entry(names.clone()).or_insert_with(|| {
+                DigitalDrawingCommands::new_from_variable_info(info.get_subinfo(&names))
+            });
+            let prev = prev_values.get(&names);
+            let new_value = prev.map_or(true, |p| p != &value);
+
+            if new_value || is_last_timestep {
+                prev_values
+                    .entry(names.clone())
+                    .or_insert(value.clone())
+                    .clone_from(&value);
+                entry.push((
+                    *pixel,
+                    DrawnRegion {
+                        inner: value,
+                        force_anti_alias: false,
+                        dinotrace_style: DinotraceDrawingStyle::Normal,
+                    },
+                ));
+            }
+        }
+    }
+
+    Some(VariableDrawCommands {
+        draw_clock_edges: false,
+        clock_edges: vec![],
+        display_id,
+        local_commands: local_commands
+            .into_iter()
+            .map(|(k, v)| (k, DrawingCommands::Digital(v)))
+            .collect(),
+        local_msgs,
+    })
+}
+
+/// Generate draw commands for a split-field (bit-slice) signal.
+fn split_field_draw_commands(
+    sf: &DisplayedSplitField,
+    display_id: DisplayedItemRef,
+    timestamps: &[(f32, num::BigUint)],
+    waves: &WaveData,
+    translators: &crate::translation::TranslatorList,
+) -> Option<VariableDrawCommands> {
+    use crate::split_field::{compute_source_value_at, make_virtual_meta, translate_virtual_value};
+    use crate::translation::TranslationResultExt;
+
+    let wave_container = waves.inner.as_waves()?;
+    let slice_bits = sf.end_bit - sf.start_bit + 1;
+    let meta = make_virtual_meta(&sf.display_name, slice_bits);
+
+    let translator = crate::wave_data::variable_translator(
+        sf.format.as_ref(),
+        &[],
+        translators,
+        || Ok(meta.clone()),
+    );
+    let info = translator.variable_info(&meta).unwrap();
+
+    let displayed_field_ref = DisplayedFieldRef {
+        item: display_id,
+        field: vec![],
+    };
+
+    let mut local_commands: HashMap<Vec<String>, DigitalDrawingCommands> = HashMap::new();
+    let mut prev_values: HashMap<Vec<String>, Option<surfer_translation_types::TranslatedValue>> =
+        HashMap::new();
+    let mut local_msgs = Vec::new();
+
+    let end_pixel = timestamps.iter().last().map(|t| t.0).unwrap_or_default();
+    let start_pixel = timestamps.get(1).map(|t| t.0).unwrap_or_default();
+
+    for ((_, prev_time), (pixel, time)) in timestamps.iter().zip(timestamps.iter().skip(1)) {
+        let is_last_timestep = pixel == &end_pixel;
+        let is_first_timestep = pixel == &start_pixel;
+
+        let val_opt = compute_source_value_at(waves, wave_container, display_id, time, translators);
+        let Some((val, _)) = val_opt else {
+            continue;
+        };
+
+        let translation_result = match translator.translate(&meta, &val) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("SplitField translator failed: {e:#}");
+                local_msgs.push(Message::ResetVariableFormat(displayed_field_ref.clone()));
+                return None;
+            }
+        };
+
+        let fields = translation_result.format_flat(&sf.format, &[], translators);
+
+        for surfer_translation_types::SubFieldFlatTranslationResult { names, value } in fields {
+            let entry = local_commands.entry(names.clone()).or_insert_with(|| {
+                DigitalDrawingCommands::new_from_variable_info(info.get_subinfo(&names))
+            });
+            let prev = prev_values.get(&names);
+            let new_value = prev.map_or(true, |p| p != &value);
+
+            if new_value || is_last_timestep {
+                prev_values
+                    .entry(names.clone())
+                    .or_insert(value.clone())
+                    .clone_from(&value);
+                entry.push((
+                    *pixel,
+                    DrawnRegion {
+                        inner: value,
+                        force_anti_alias: false,
+                        dinotrace_style: DinotraceDrawingStyle::Normal,
+                    },
+                ));
+            }
+        }
+        let _ = (prev_time, is_first_timestep);
+    }
+
+    Some(VariableDrawCommands {
+        draw_clock_edges: false,
+        clock_edges: vec![],
+        display_id,
+        local_commands: local_commands
+            .into_iter()
+            .map(|(k, v)| (k, DrawingCommands::Digital(v)))
+            .collect(),
+        local_msgs,
+    })
 }
 
 /// Common setup for variable draw commands: extracts metadata and determines rendering mode.
@@ -455,7 +781,9 @@ impl SystemState {
 
         let use_dinotrace_style = self.use_dinotrace_style();
         let translators = &self.translators;
-        let commands = waves
+
+        // Collect variable draw commands (parallel)
+        let variable_commands: Vec<VariableDrawCommands> = waves
             .items_tree
             .iter_visible()
             .map(|node| (node.item_ref, waves.displayed_items.get(&node.item_ref)))
@@ -466,8 +794,6 @@ impl SystemState {
             .collect::<Vec<_>>()
             .par_iter()
             .cloned()
-            // Iterate over the variables, generating draw commands for all the
-            // subfields
             .filter_map(|(id, displayed_variable)| {
                 variable_draw_commands(
                     displayed_variable,
@@ -480,7 +806,39 @@ impl SystemState {
                     use_dinotrace_style,
                 )
             })
-            .collect::<Vec<_>>();
+            .collect();
+
+        // Collect bus draw commands (sequential since they reference other items)
+        let bus_commands: Vec<VariableDrawCommands> = waves
+            .items_tree
+            .iter_visible()
+            .map(|node| (node.item_ref, waves.displayed_items.get(&node.item_ref)))
+            .filter_map(|(id, item)| match item {
+                Some(DisplayedItem::Bus(bus)) => Some((id, bus)),
+                _ => None,
+            })
+            .filter_map(|(id, bus)| bus_draw_commands(bus, id, &timestamps, waves, translators))
+            .collect();
+
+        // Collect split-field draw commands
+        let sf_commands: Vec<VariableDrawCommands> = waves
+            .items_tree
+            .iter_visible()
+            .map(|node| (node.item_ref, waves.displayed_items.get(&node.item_ref)))
+            .filter_map(|(id, item)| match item {
+                Some(DisplayedItem::SplitField(sf)) => Some((id, sf)),
+                _ => None,
+            })
+            .filter_map(|(id, sf)| {
+                split_field_draw_commands(sf, id, &timestamps, waves, translators)
+            })
+            .collect();
+
+        let commands: Vec<VariableDrawCommands> = variable_commands
+            .into_iter()
+            .chain(bus_commands)
+            .chain(sf_commands)
+            .collect();
 
         let mut clock_variable_count = 0usize;
         for VariableDrawCommands {
@@ -1188,6 +1546,76 @@ impl SystemState {
                 }
                 ItemDrawingInfo::Stream(_) => {}
                 ItemDrawingInfo::Placeholder(_) => {}
+                ItemDrawingInfo::SplitField(sf_info) => {
+                    if let Some(commands) = draw_commands.get(&sf_info.displayed_field_ref) {
+                        let height_scaling_factor = displayed_item.map_or(
+                            1.0,
+                            super::displayed_item::DisplayedItem::height_scaling_factor,
+                        );
+                        let y_offset = y_offset + self.user.config.layout.waveforms_gap;
+                        let color = color.unwrap_or(self.user.config.theme.variable_default);
+                        if let DrawingCommands::Digital(digital_commands) = commands {
+                            let background_color = self.get_background_color(
+                                waves,
+                                drawing_info.vidx(),
+                                item_count,
+                            );
+                            let text_color =
+                                self.user.config.theme.get_best_text_color(background_color);
+                            for (old, new) in digital_commands
+                                .values
+                                .iter()
+                                .zip(digital_commands.values.iter().skip(1))
+                            {
+                                self.draw_region(
+                                    (old, new),
+                                    color,
+                                    y_offset,
+                                    height_scaling_factor,
+                                    ctx,
+                                    text_color,
+                                );
+                            }
+                        }
+                    }
+                }
+                ItemDrawingInfo::Bus(bus_info) => {
+                    if let Some(commands) = draw_commands.get(&bus_info.displayed_field_ref) {
+                        let height_scaling_factor = displayed_item.map_or(
+                            1.0,
+                            super::displayed_item::DisplayedItem::height_scaling_factor,
+                        );
+                        let y_offset = y_offset + self.user.config.layout.waveforms_gap;
+                        let color = color.unwrap_or(self.user.config.theme.variable_default);
+
+                        if let DrawingCommands::Digital(digital_commands) = commands {
+                            let background_color = self.get_background_color(
+                                waves,
+                                drawing_info.vidx(),
+                                item_count,
+                            );
+                            let text_color = self
+                                .user
+                                .config
+                                .theme
+                                .get_best_text_color(background_color);
+                            for (old, new) in digital_commands
+                                .values
+                                .iter()
+                                .zip(digital_commands.values.iter().skip(1))
+                            {
+                                self.draw_region(
+                                    (old, new),
+                                    color,
+                                    y_offset,
+                                    height_scaling_factor,
+                                    ctx,
+                                    text_color,
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1352,6 +1780,8 @@ impl SystemState {
                 ItemDrawingInfo::Marker(_) => {}
                 ItemDrawingInfo::Group(_) => {}
                 ItemDrawingInfo::Placeholder(_) => {}
+                ItemDrawingInfo::Bus(_) => {}
+                ItemDrawingInfo::SplitField(_) => {}
             }
         }
 

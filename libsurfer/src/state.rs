@@ -13,6 +13,7 @@ use crate::{
     dialog::{OpenSiblingStateFileDialog, ReloadWaveformDialog},
     displayed_item_tree::{DisplayedItemTree, VisibleItemIndex},
     find_value::FindValueState,
+    split_field::SplitFieldDialogState,
     frame_buffer::FrameBufferSettings,
     hierarchy::{HierarchyStyle, ParameterDisplayLocation},
     marker::{MarkerDeltaDialogState, MarkerDeltaMode},
@@ -154,6 +155,9 @@ pub struct UserState {
     /// State for the Find Value dialog (None when closed).
     #[serde(skip, default)]
     pub(crate) find_value_state: Option<FindValueState>,
+    /// State for the Split Field extraction dialog (None when closed).
+    #[serde(skip, default)]
+    pub(crate) split_field_dialog_state: Option<SplitFieldDialogState>,
 }
 
 // Impl needed since for loading we need to put State into a Message
@@ -242,6 +246,7 @@ impl Default for UserState {
             show_marker_delta_dialog: false,
             marker_delta_dialog_state: MarkerDeltaDialogState::default(),
             find_value_state: None,
+            split_field_dialog_state: None,
         }
     }
 }
