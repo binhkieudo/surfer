@@ -489,4 +489,14 @@ pub enum Message {
     ToggleCommentVisibility(Id),
     ShowMarkerDeltaDialog,
     SetMarkerDeltaMode(crate::marker::MarkerDeltaMode),
+    /// Show the Find Value dialog for the given variable
+    ShowFindValueDialog(VisibleItemIndex),
+    /// Close the Find Value dialog
+    CloseFindValueDialog,
+    /// Search for the given string value in the current variable
+    FindValueSearch(String),
+    /// Navigate to the next occurrence of the found value
+    FindValueNext,
+    /// Navigate to the previous occurrence of the found value
+    FindValuePrevious,
 }

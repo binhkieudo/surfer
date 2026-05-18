@@ -105,6 +105,19 @@ is available.
   - Delta is displayed as `Δ: {value}` in the waveform panel and in the Markers table
   - Setting is remembered for the session
 
+- ✨ **Find Value Feature**: Added ability to search for specific values in variables
+  - Right-click on a variable → Select **Find Value**
+  - Search dialog opens with text input for value to find
+  - Value format matches the current display format of the variable
+  - Click **Find** or press Enter to search through all transitions
+  - Navigation buttons:
+    - **Next**: Jump to next occurrence (wraps to first if at last)
+    - **Previous**: Jump to previous occurrence (wraps to last if at first)
+  - Shows occurrence count (e.g., `"2 / 5 occurrences"`)
+  - Displays red **"Not found value"** message if search yields no results
+  - Cursor automatically moves to found timestamps
+  - Dialog can be freely dragged to any position on the screen
+
 ### Build & Development
 - 📦 **Build Guide**: Added comprehensive `build.md` with debug and release build instructions
 - 🛠️ **Makefile**: Added Makefile with targets for debug, release, clean, test, lint, install, etc.

@@ -25,6 +25,7 @@ pub mod drawing_canvas;
 pub mod file_dialog;
 pub mod file_history;
 pub mod file_watcher;
+pub mod find_value;
 pub mod frame_buffer;
 pub mod fzcmd;
 pub mod graphics;
@@ -2573,9 +2574,150 @@ impl SystemState {
                 self.user.marker_delta_mode = mode;
                 self.user.show_marker_delta_dialog = false;
             }
+            Message::ShowFindValueDialog(vidx) => {
+                self.user.find_value_state =
+                    Some(find_value::FindValueState::new(vidx));
+            }
+            Message::CloseFindValueDialog => {
+                self.user.find_value_state = None;
+            }
+            Message::FindValueSearch(search_value) => {
+                if let Some(state) = &self.user.find_value_state {
+                    let vidx = state.vidx;
+                    let occurrences = self.find_all_value_occurrences(vidx, &search_value);
+                    if let Some(state) = &mut self.user.find_value_state {
+                        state.not_found = occurrences.is_empty();
+                        state.current_idx = if occurrences.is_empty() { None } else { Some(0) };
+                        state.occurrences = occurrences;
+                    }
+                }
+                if let Some(state) = &self.user.find_value_state {
+                    if let Some(idx) = state.current_idx {
+                        let time = state.occurrences[idx].clone();
+                        if let Some(waves) = &mut self.user.waves {
+                            waves.cursor = Some(time);
+                            waves.go_to_cursor_if_not_in_view();
+                        }
+                        self.invalidate_draw_commands();
+                    }
+                }
+            }
+            Message::FindValueNext => {
+                if let Some(state) = &mut self.user.find_value_state {
+                    if !state.occurrences.is_empty() {
+                        let new_idx = match state.current_idx {
+                            None => 0,
+                            Some(idx) => (idx + 1) % state.occurrences.len(),
+                        };
+                        state.current_idx = Some(new_idx);
+                        let time = state.occurrences[new_idx].clone();
+                        if let Some(waves) = &mut self.user.waves {
+                            waves.cursor = Some(time);
+                            waves.go_to_cursor_if_not_in_view();
+                        }
+                        self.invalidate_draw_commands();
+                    }
+                }
+            }
+            Message::FindValuePrevious => {
+                if let Some(state) = &mut self.user.find_value_state {
+                    if !state.occurrences.is_empty() {
+                        let len = state.occurrences.len();
+                        let new_idx = match state.current_idx {
+                            None | Some(0) => len - 1,
+                            Some(idx) => idx - 1,
+                        };
+                        state.current_idx = Some(new_idx);
+                        let time = state.occurrences[new_idx].clone();
+                        if let Some(waves) = &mut self.user.waves {
+                            waves.cursor = Some(time);
+                            waves.go_to_cursor_if_not_in_view();
+                        }
+                        self.invalidate_draw_commands();
+                    }
+                }
+            }
         }
 
         Some(())
+    }
+
+    fn find_all_value_occurrences(
+        &self,
+        vidx: displayed_item_tree::VisibleItemIndex,
+        search_value: &str,
+    ) -> Vec<BigInt> {
+        use num::{BigUint, Zero};
+        use num::bigint::ToBigInt as _;
+
+        let Some(waves) = &self.user.waves else {
+            return vec![];
+        };
+        let Some(node) = waves.items_tree.get_visible(vidx) else {
+            return vec![];
+        };
+        let item_ref = node.item_ref;
+        let Some(displayed_item::DisplayedItem::Variable(displayed_variable)) =
+            waves.displayed_items.get(&item_ref)
+        else {
+            return vec![];
+        };
+
+        let variable = &displayed_variable.variable_ref;
+        let Ok(meta) = waves.inner.as_waves().unwrap().variable_meta(variable) else {
+            return vec![];
+        };
+
+        let displayed_field_ref: displayed_item::DisplayedFieldRef = item_ref.into();
+        let translator = waves.variable_translator_with_meta(
+            &displayed_field_ref.without_field(),
+            &self.translators,
+            &meta,
+        );
+
+        let wave_container = waves.inner.as_waves().unwrap();
+
+        let mut occurrences = vec![];
+        let mut current_time = BigUint::zero();
+
+        loop {
+            let Ok(Some(result)) = wave_container.query_variable(variable, &current_time) else {
+                break;
+            };
+
+            let Some((time, val)) = result.current else {
+                break;
+            };
+
+            let translated = translator.translate(&meta, &val).ok();
+            let value_str = translated.and_then(|t| {
+                use crate::translation::TranslationResultExt;
+                let fields = t.format_flat(
+                    &displayed_variable.format,
+                    &displayed_variable.field_formats,
+                    &self.translators,
+                );
+                fields
+                    .iter()
+                    .find(|f| f.names == displayed_field_ref.field)
+                    .and_then(|f| f.value.as_ref().map(|v| v.value.clone()))
+            });
+
+            if value_str.as_deref() == Some(search_value) {
+                if let Some(bigint_time) = time.to_bigint() {
+                    occurrences.push(bigint_time);
+                }
+            }
+
+            match result.next {
+                Some(next_time) if next_time > current_time => {
+                    current_time = next_time;
+                }
+                _ => break,
+            }
+        }
+
+        occurrences
     }
 
     fn annotation_id(&mut self) -> Id {

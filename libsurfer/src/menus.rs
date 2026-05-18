@@ -703,6 +703,9 @@ impl SystemState {
             msgs.push(Message::RemoveVisibleItems(group_target));
         }
         if path.is_some() {
+            if ui.button("Find Value").clicked() {
+                msgs.push(Message::ShowFindValueDialog(vidx));
+            }
             // Actual signal. Not one of: divider, timeline, marker.
             if ui.button("Show frame buffer").clicked() {
                 msgs.push(Message::SetFrameBufferVisibleVariable(Some(vidx)));

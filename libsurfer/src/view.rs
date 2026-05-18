@@ -350,6 +350,10 @@ impl SystemState {
             );
         }
 
+        if let Some(find_state) = &mut self.user.find_value_state {
+            crate::find_value::draw_find_value_dialog(find_state, ui, &mut msgs);
+        }
+
         if self
             .user
             .show_menu
