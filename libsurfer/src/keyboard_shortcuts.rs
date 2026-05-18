@@ -371,18 +371,26 @@ impl SurferShortcuts {
                 ));
             }
             ShortcutAction::ZoomIn => {
+                let cursor = state.user.waves.as_ref().and_then(|w| w.cursor.clone());
                 msgs.push(Message::CanvasZoom {
                     mouse_ptr: None,
                     delta: 0.5,
                     viewport_idx: 0,
                 });
+                if cursor.is_some() {
+                    msgs.push(Message::GoToTime(cursor, 0));
+                }
             }
             ShortcutAction::ZoomOut => {
+                let cursor = state.user.waves.as_ref().and_then(|w| w.cursor.clone());
                 msgs.push(Message::CanvasZoom {
                     mouse_ptr: None,
                     delta: 2.0,
                     viewport_idx: 0,
                 });
+                if cursor.is_some() {
+                    msgs.push(Message::GoToTime(cursor, 0));
+                }
             }
             ShortcutAction::UiZoomIn => {
                 let mut next_factor = 0f32;

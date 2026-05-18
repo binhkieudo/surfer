@@ -85,6 +85,35 @@ Contributions to Surfer are very welcome! See the
 suggestions on your own. Some basic [development information](https://gitlab.com/surfer-project/surfer/-/wikis/home)
 is available.
 
+## Recent Improvements (2026-05-18)
+
+### UI/UX Enhancements
+- ✨ **Custom Zoom Hotkeys**: Added keyboard shortcuts for waveform zoom
+  - Press `I` to zoom in (centered on cursor)
+  - Press `O` to zoom out (centered on cursor)
+  - Hotkeys can be customized via `default_config.toml`
+  - When cursor (red vertical line) is present, zoom centers on it; otherwise zooms from midpoint
+
+### Build & Development
+- 📦 **Build Guide**: Added comprehensive `build.md` with debug and release build instructions
+- 🛠️ **Makefile**: Added Makefile with targets for debug, release, clean, test, lint, install, etc.
+  - Run `make help` to see all available targets
+  - Example: `make debug` for quick development builds, `make release` for optimized builds
+
+### Performance Analysis
+- 📊 **Improvement Proposals**: Created `improvement.md` with detailed analysis of performance optimization opportunities
+  - Wave Rendering optimization (GPU Compute, LOD, Tile Caching)
+  - Value Translation caching (50-80% speedup potential)
+  - File parsing parallelization
+  - Includes ROI analysis and implementation roadmap
+  - See `improvement.md` for detailed technical proposals
+
+### Documentation
+- 📝 **Added Files**:
+  - `build.md` - Build instructions for debug/release versions
+  - `improvement.md` - Performance optimization opportunities
+  - `Makefile` - Build automation and development targets
+
 ## Integration
 
 Surfer is designed to be easy to integrate in other projects, especially web
