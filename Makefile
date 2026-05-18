@@ -1,4 +1,4 @@
-.PHONY: help debug release clean install uninstall test check fmt lint
+.PHONY: help setup debug release clean install uninstall test check fmt lint
 
 # Default target
 help:
@@ -24,14 +24,23 @@ help:
 	@echo "  doc             Build documentation"
 	@echo "  bench           Run benchmarks"
 	@echo ""
+	@echo "Setup:"
+	@echo "  setup           Initialize git submodules (required first time)"
+	@echo ""
+
+# Setup
+setup:
+	@echo "Initializing git submodules..."
+	git submodule update --init --recursive
+	@echo "✓ Submodules initialized"
 
 # Build targets
-debug:
+debug: setup
 	@echo "Building Surfer (debug)..."
 	cargo build
 	@echo "✓ Debug build complete: target/debug/surfer"
 
-release:
+release: setup
 	@echo "Building Surfer (release)..."
 	cargo build --release
 	@echo "✓ Release build complete: target/release/surfer"
