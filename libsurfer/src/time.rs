@@ -136,7 +136,7 @@ impl From<ftr_parser::types::Timescale> for TimeUnit {
 
 impl TimeUnit {
     /// Get the power-of-ten exponent for a time unit.
-    fn exponent(self) -> i8 {
+    pub fn exponent(self) -> i8 {
         match self {
             TimeUnit::ZeptoSeconds => -21,
             TimeUnit::AttoSeconds => -18,

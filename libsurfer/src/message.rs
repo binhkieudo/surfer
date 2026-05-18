@@ -487,4 +487,6 @@ pub enum Message {
     AddCommentMessage(Id, String, String),
     RemoveCommentMessage(Id, Id),
     ToggleCommentVisibility(Id),
+    ShowMarkerDeltaDialog,
+    SetMarkerDeltaMode(crate::marker::MarkerDeltaMode),
 }

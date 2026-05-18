@@ -452,6 +452,7 @@ impl SurferShortcuts {
                         });
                     }
                 }
+                msgs.push(Message::ShowMarkerDeltaDialog);
             }
             ShortcutAction::ToggleMenu => {
                 msgs.push(Message::SetMenuVisible(!state.show_menu()));

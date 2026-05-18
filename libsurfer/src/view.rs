@@ -3,6 +3,7 @@ use crate::{
     dialog::{draw_open_sibling_state_file_dialog, draw_reload_waveform_dialog},
     displayed_item::DisplayedVariable,
     fzcmd::expand_command,
+    marker::draw_marker_delta_dialog,
     menus::generic_context_menu,
     time::TimeFormatter,
     tooltips::variable_tooltip_text,
@@ -339,6 +340,14 @@ impl SystemState {
             && let Some(waves) = &self.user.waves
         {
             self.draw_marker_window(waves, ui, &mut msgs);
+        }
+
+        if self.user.show_marker_delta_dialog {
+            draw_marker_delta_dialog(
+                &mut self.user.marker_delta_dialog_state,
+                ui,
+                &mut msgs,
+            );
         }
 
         if self
@@ -1768,12 +1777,36 @@ impl SystemState {
                             (drawing_info.bottom() - drawing_info.top() - 2.0 * waveforms_gap)
                                 .max(1.0);
                         if let Some(cursor) = &waves.cursor {
-                            let delta = time_string(
-                                &(waves.numbered_marker_time(numbered_cursor.idx) - cursor),
-                                &waves.inner.metadata().timescale,
-                                &self.user.wanted_timeunit,
-                                &self.get_time_format(),
-                            );
+                            let raw_diff =
+                                waves.numbered_marker_time(numbered_cursor.idx) - cursor;
+                            let delta =
+                                match &self.user.marker_delta_mode {
+                                    crate::marker::MarkerDeltaMode::Time => time_string(
+                                        &raw_diff,
+                                        &waves.inner.metadata().timescale,
+                                        &self.user.wanted_timeunit,
+                                        &self.get_time_format(),
+                                    ),
+                                    crate::marker::MarkerDeltaMode::Cycle {
+                                        period,
+                                        unit,
+                                    } => {
+                                        use num::ToPrimitive as _;
+                                        let timescale = &waves.inner.metadata().timescale;
+                                        let data_exp = timescale.unit.exponent() as f64;
+                                        let multiplier =
+                                            timescale.multiplier.unwrap_or(1) as f64;
+                                        let diff_f64 =
+                                            raw_diff.to_f64().unwrap_or(0.0);
+                                        let diff_seconds = diff_f64
+                                            * multiplier
+                                            * 10f64.powi(data_exp as i32);
+                                        let period_seconds =
+                                            period * 10f64.powi(unit.exponent() as i32);
+                                        let cycles = diff_seconds / period_seconds;
+                                        format!("{cycles:.3} cycles")
+                                    }
+                                };
 
                             ui.add_space(waveforms_gap);
                             ui.label(

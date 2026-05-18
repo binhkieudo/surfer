@@ -94,6 +94,17 @@ is available.
   - Hotkeys can be customized via `default_config.toml`
   - When cursor (red vertical line) is present, zoom centers on it; otherwise zooms from midpoint
 
+- ✨ **Marker Delta Display Mode**: Added configurable delta display between cursor and markers
+  - Press `M` to open **Marker Delta Display** dialog
+  - Two display modes:
+    - **Time mode**: Shows delta as absolute time value (default, e.g., `50 ns`)
+    - **Cycle mode**: Shows delta as number of clock cycles (e.g., `5.234 cycles`)
+  - In cycle mode, configure:
+    - Period value: the duration of one cycle (e.g., `10`)
+    - Period unit: time unit of period (ns, ps, μs, ms, s, etc.)
+  - Delta is displayed as `Δ: {value}` in the waveform panel and in the Markers table
+  - Setting is remembered for the session
+
 ### Build & Development
 - 📦 **Build Guide**: Added comprehensive `build.md` with debug and release build instructions
 - 🛠️ **Makefile**: Added Makefile with targets for debug, release, clean, test, lint, install, etc.
@@ -206,6 +217,8 @@ As an indication of the status of the project, here is an incomplete list of sup
 - [x] Wave file reloading
 - [x] Saving and loading selected waves
 - [x] Cursors for measuring time
+  - [x] Time-based delta display (cursor to marker)
+  - [x] Cycle-based delta display (configurable period)
 - [x] Mouse gesture control
 - [x] Keyboard commands
   - [ ] Configurable keyboard commands

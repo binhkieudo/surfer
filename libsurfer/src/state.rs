@@ -14,6 +14,7 @@ use crate::{
     displayed_item_tree::{DisplayedItemTree, VisibleItemIndex},
     frame_buffer::FrameBufferSettings,
     hierarchy::{HierarchyStyle, ParameterDisplayLocation},
+    marker::{MarkerDeltaDialogState, MarkerDeltaMode},
     message::Message,
     system_state::SystemState,
     time::{TimeStringFormatting, TimeUnit},
@@ -140,6 +141,15 @@ pub struct UserState {
     pub state_file: Option<PathBuf>,
 
     pub(crate) show_annotation_list: bool,
+    /// How delta between markers is displayed (time or cycles).
+    #[serde(skip, default)]
+    pub(crate) marker_delta_mode: MarkerDeltaMode,
+    /// Whether the marker-delta configuration dialog is open.
+    #[serde(skip, default)]
+    pub(crate) show_marker_delta_dialog: bool,
+    /// Transient UI state for the marker-delta dialog.
+    #[serde(skip, default)]
+    pub(crate) marker_delta_dialog_state: MarkerDeltaDialogState,
 }
 
 // Impl needed since for loading we need to put State into a Message
@@ -224,6 +234,9 @@ impl Default for UserState {
             surver_url: None,
             transition_value: None,
             show_annotation_list: false,
+            marker_delta_mode: MarkerDeltaMode::default(),
+            show_marker_delta_dialog: false,
+            marker_delta_dialog_state: MarkerDeltaDialogState::default(),
         }
     }
 }

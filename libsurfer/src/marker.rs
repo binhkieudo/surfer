@@ -1,10 +1,11 @@
 use ecolor::Color32;
-use egui::{Context, RichText, WidgetText, Window};
+use egui::{Context, Layout, RichText, WidgetText, Window};
 use egui_extras::{Column, TableBuilder};
-use emath::{Align2, Pos2, Rect};
+use emath::{Align, Align2, Pos2, Rect};
 use epaint::{CornerRadius, FontId, Stroke};
 use itertools::Itertools;
-use num::{BigInt, Zero};
+use num::{BigInt, ToPrimitive, Zero};
+use serde::{Deserialize, Serialize};
 
 use crate::SystemState;
 use crate::drawing_canvas::draw_vertical_line;
@@ -12,7 +13,7 @@ use crate::{
     config::SurferTheme,
     displayed_item::{DisplayedItem, DisplayedItemRef, DisplayedMarker},
     message::Message,
-    time::TimeFormatter,
+    time::{TimeFormatter, TimeUnit},
     view::{DrawingContext, ItemDrawingInfo},
     viewport::Viewport,
     wave_data::WaveData,
@@ -22,6 +23,125 @@ pub const DEFAULT_MARKER_NAME: &str = "Marker";
 const MAX_MARKERS: usize = 255;
 const MAX_MARKER_INDEX: u8 = 254;
 const CURSOR_MARKER_IDX: u8 = 255;
+
+/// How the delta between markers is displayed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum MarkerDeltaMode {
+    Time,
+    Cycle { period: f64, unit: TimeUnit },
+}
+
+impl Default for MarkerDeltaMode {
+    fn default() -> Self {
+        MarkerDeltaMode::Time
+    }
+}
+
+/// Transient state for the marker-delta configuration dialog.
+#[derive(Debug, Clone)]
+pub struct MarkerDeltaDialogState {
+    /// Which mode is currently selected in the dialog (not yet confirmed).
+    pub selected_mode: MarkerDeltaMode,
+    /// Editing buffer for the cycle period value (string so the user can type freely).
+    pub period_input: String,
+    /// Editing buffer for the period unit.
+    pub period_unit: TimeUnit,
+}
+
+impl Default for MarkerDeltaDialogState {
+    fn default() -> Self {
+        MarkerDeltaDialogState {
+            selected_mode: MarkerDeltaMode::Time,
+            period_input: "10".to_string(),
+            period_unit: TimeUnit::NanoSeconds,
+        }
+    }
+}
+
+/// Draw the marker-delta configuration dialog.
+pub fn draw_marker_delta_dialog(
+    dialog: &mut MarkerDeltaDialogState,
+    ctx: &Context,
+    msgs: &mut Vec<Message>,
+) {
+    let mut open = true;
+    Window::new("Marker Delta Display")
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.label("Choose how to display the delta between markers:");
+            ui.add_space(8.0);
+
+            let is_time = matches!(dialog.selected_mode, MarkerDeltaMode::Time);
+            let is_cycle = matches!(dialog.selected_mode, MarkerDeltaMode::Cycle { .. });
+
+            if ui.radio(is_time, "Time").clicked() {
+                dialog.selected_mode = MarkerDeltaMode::Time;
+            }
+
+            if ui.radio(is_cycle, "Cycle").clicked() {
+                let period = dialog
+                    .period_input
+                    .parse::<f64>()
+                    .unwrap_or(10.0)
+                    .max(f64::MIN_POSITIVE);
+                dialog.selected_mode = MarkerDeltaMode::Cycle {
+                    period,
+                    unit: dialog.period_unit,
+                };
+            }
+
+            if is_cycle {
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label("Period:");
+                    ui.text_edit_singleline(&mut dialog.period_input);
+                    egui::ComboBox::from_id_salt("marker_period_unit")
+                        .selected_text(dialog.period_unit.to_string())
+                        .show_ui(ui, |ui| {
+                            for unit in enum_iterator::all::<TimeUnit>() {
+                                if matches!(unit, TimeUnit::Auto | TimeUnit::None) {
+                                    continue;
+                                }
+                                ui.selectable_value(
+                                    &mut dialog.period_unit,
+                                    unit,
+                                    unit.to_string(),
+                                );
+                            }
+                        });
+                });
+            }
+
+            ui.add_space(12.0);
+            ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
+                if ui.button("Cancel").clicked() {
+                    msgs.push(Message::ShowMarkerDeltaDialog);
+                }
+                if ui.button("Set").clicked() {
+                    let mode = if is_cycle {
+                        let period = dialog
+                            .period_input
+                            .parse::<f64>()
+                            .unwrap_or(10.0)
+                            .max(f64::MIN_POSITIVE);
+                        MarkerDeltaMode::Cycle {
+                            period,
+                            unit: dialog.period_unit,
+                        }
+                    } else {
+                        MarkerDeltaMode::Time
+                    };
+                    msgs.push(Message::SetMarkerDeltaMode(mode));
+                }
+            });
+        });
+    if !open {
+        msgs.push(Message::ShowMarkerDeltaDialog);
+    }
+}
 
 impl WaveData {
     /// Get the color for a marker by its index, falling back to cursor color if not found
@@ -279,6 +399,8 @@ impl SystemState {
                                 &self.user.wanted_timeunit,
                                 &self.get_time_format(),
                             );
+                            let timescale = &waves.inner.metadata().timescale;
+                            let delta_mode = &self.user.marker_delta_mode;
                             for (marker_idx, row_marker_time, row_widget_text) in &markers {
                                 body.row(row_height, |mut row| {
                                     row.col(|ui| {
@@ -290,10 +412,27 @@ impl SystemState {
                                         }
                                     });
                                     for (_, col_marker_time, _) in &markers {
-                                        let diff = time_formatter
-                                            .format(&(*row_marker_time - *col_marker_time));
+                                        let raw_diff = *row_marker_time - *col_marker_time;
+                                        let diff_str = match delta_mode {
+                                            MarkerDeltaMode::Time => {
+                                                time_formatter.format(&raw_diff)
+                                            }
+                                            MarkerDeltaMode::Cycle { period, unit } => {
+                                                let data_exp = timescale.unit.exponent() as f64;
+                                                let multiplier =
+                                                    timescale.multiplier.unwrap_or(1) as f64;
+                                                let diff_f64 = raw_diff.to_f64().unwrap_or(0.0);
+                                                let diff_seconds = diff_f64
+                                                    * multiplier
+                                                    * 10f64.powi(data_exp as i32);
+                                                let period_seconds =
+                                                    period * 10f64.powi(unit.exponent() as i32);
+                                                let cycles = diff_seconds / period_seconds;
+                                                format!("{cycles:.3} cycles")
+                                            }
+                                        };
                                         row.col(|ui| {
-                                            ui.label(diff);
+                                            ui.label(diff_str);
                                         });
                                     }
                                 });

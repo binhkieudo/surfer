@@ -2566,6 +2566,13 @@ impl SystemState {
                     target.get_comment_box_mut().visible = !target.get_comment_box().visible;
                 }
             }
+            Message::ShowMarkerDeltaDialog => {
+                self.user.show_marker_delta_dialog = !self.user.show_marker_delta_dialog;
+            }
+            Message::SetMarkerDeltaMode(mode) => {
+                self.user.marker_delta_mode = mode;
+                self.user.show_marker_delta_dialog = false;
+            }
         }
 
         Some(())
