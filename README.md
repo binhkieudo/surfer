@@ -91,7 +91,7 @@ Contributions to Surfer are very welcome! See the
 suggestions on your own. Some basic [development information](https://gitlab.com/surfer-project/surfer/-/wikis/home)
 is available.
 
-## Recent Improvements (2026-05-18 - 2026-05-20)
+## Recent Improvements (2026-05-18 - 2026-05-20 → updated 2026-05-20)
 
 ### UI/UX Enhancements
 
@@ -160,6 +160,51 @@ is available.
   - Displays red **"Not found value"** message if search yields no results
   - Cursor automatically moves to found timestamps
   - Dialog can be freely dragged to any position on the screen
+
+### Theming (2026-05-20)
+
+- 🎨 **SimVision-inspired theme**: Added `simvision` theme (`themes/simvision.toml`) modelled after
+  Cadence SimVision's visual style
+  - Black waveform canvas with light gray (`#c8c8c8`) toolbar and menu panels
+  - Signal name and value panels share the black canvas background
+  - Bright green (`#33ff33`) as the default waveform color, red cursor (`#ff2020`)
+  - Select via **View → Theme → simvision**
+
+- 💾 **Persistent theme selection**: Chosen theme is now written to the user config file
+  (`~/.config/surfer/config.toml` on Linux) and restored automatically on next launch —
+  no more resetting to the default theme after a restart
+
+- 🖌️ **Expanded waveform color palette**: 6 new colors added to all themes for waveform
+  signal coloring (right-click a signal → **Color**):
+
+  | Name | Hex |
+  |---|---|
+  | White | `#ffffff` |
+  | Cyan | `#00ffff` |
+  | Magenta | `#ff44ff` |
+  | Lime | `#aaff44` |
+  | Aqua | `#00ffcc` |
+  | HotPink | `#ff4499` |
+
+- ✨ **Brighter signal colors in SimVision theme**: All 8 original palette colors raised to
+  full brightness for maximum contrast on the black canvas:
+
+  | Name | Before | After |
+  |---|---|---|
+  | Green | `#00cc00` | `#33ff33` |
+  | Red | `#ff4040` | `#ff5555` |
+  | Yellow | `#cccc00` | `#ffee00` |
+  | Blue | `#4488cc` | `#44aaff` |
+  | Pink | `#cc88cc` | `#ffaaff` |
+  | Orange | `#cc8844` | `#ffaa33` |
+  | Gray | `#808080` | `#b0b0b0` |
+  | Violet | `#8888cc` | `#aa99ff` |
+
+- 🔧 **Theme engine fixes**:
+  - Toolbar, menu bar, and scope browser now correctly use `primary_ui_color` as their
+    background (instead of `secondary_ui_color`), making light-panel themes display properly
+  - Signal name list and value panels now explicitly use `canvas_colors.background` so they
+    always match the waveform canvas regardless of `secondary_ui_color`
 
 ### Build & Development
 - 📦 **Build Guide**: Added comprehensive `build.md` with debug and release build instructions
@@ -294,6 +339,8 @@ As an indication of the status of the project, here is an incomplete list of sup
 - [ ] Computed variables, e.g., `a >= 100`
 - [ ] Clock period time unit
 - [x] Configurable color schemes
+  - [x] SimVision-inspired dark theme
+  - [x] Persistent theme selection (auto-saved to user config)
 - [x] Analog drawing
 
 ## License
