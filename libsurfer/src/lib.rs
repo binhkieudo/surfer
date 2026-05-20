@@ -2355,12 +2355,14 @@ impl SystemState {
                 }
             }
             Message::SelectTheme(theme_name) => {
-                let theme = SurferTheme::new(theme_name)
+                let theme = SurferTheme::new(theme_name.clone())
                     .with_context(|| "Failed to set theme")
                     .ok()?;
                 self.user.config.theme = theme;
                 let ctx = self.context.as_ref()?;
                 ctx.set_visuals(self.get_visuals());
+                #[cfg(not(target_arch = "wasm32"))]
+                persist_theme_to_config(theme_name);
             }
             Message::EnableAnimations(enable) => {
                 let ctx = self.context.as_ref()?;
@@ -3165,6 +3167,48 @@ fn dump_tree(waves: &WaveData) {
         result.push('\n');
     }
     info!("tree: \n{}", &result);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn persist_theme_to_config(theme_name: Option<String>) {
+    use crate::config::{CONFIG_FILE, PROJECT_DIR};
+    let Some(proj_dirs) = &*PROJECT_DIR else {
+        return;
+    };
+    let config_dir = proj_dirs.config_dir();
+    let config_file = config_dir.join(CONFIG_FILE);
+
+    let existing = config_file
+        .exists()
+        .then(|| std::fs::read_to_string(&config_file).ok())
+        .flatten()
+        .unwrap_or_default();
+
+    let theme_line = format!(
+        "theme = \"{}\"",
+        theme_name.as_deref().unwrap_or_default()
+    );
+
+    let updated = if existing.lines().any(|l| l.trim_start().starts_with("theme")) {
+        existing
+            .lines()
+            .map(|l| {
+                if l.trim_start().starts_with("theme") {
+                    theme_line.as_str()
+                } else {
+                    l
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else if existing.is_empty() {
+        theme_line
+    } else {
+        format!("{existing}\n{theme_line}")
+    };
+
+    let _ = std::fs::create_dir_all(config_dir);
+    let _ = std::fs::write(&config_file, updated);
 }
 
 pub struct StateWrapper(Arc<RwLock<SystemState>>);

@@ -55,6 +55,7 @@ static BUILTIN_THEMES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
             include_str!("../../themes/rose-pine-dawn.toml"),
         ),
         theme!("solarized"),
+        theme!("simvision"),
     ])
 });
 
@@ -64,7 +65,7 @@ pub static PROJECT_DIR: LazyLock<Option<ProjectDirs>> =
 #[cfg(not(target_arch = "wasm32"))]
 const OLD_CONFIG_FILE: &str = "surfer.toml";
 #[cfg(not(target_arch = "wasm32"))]
-const CONFIG_FILE: &str = "config.toml";
+pub const CONFIG_FILE: &str = "config.toml";
 #[cfg(not(target_arch = "wasm32"))]
 const THEMES_DIR: &str = "themes";
 #[cfg(not(target_arch = "wasm32"))]

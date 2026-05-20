@@ -471,7 +471,7 @@ impl SystemState {
                         Frame::default()
                             .inner_margin(0)
                             .outer_margin(0)
-                            .fill(self.user.config.theme.secondary_ui_color.background)
+                            .fill(self.user.config.theme.canvas_colors.background)
                             .stroke(Stroke::NONE),
                     )
                     .default_size(100.)
@@ -518,7 +518,7 @@ impl SystemState {
                         Frame::default()
                             .inner_margin(0)
                             .outer_margin(0)
-                            .fill(self.user.config.theme.secondary_ui_color.background)
+                            .fill(self.user.config.theme.canvas_colors.background)
                             .stroke(Stroke::NONE),
                     )
                     .default_size(100.)
@@ -561,7 +561,7 @@ impl SystemState {
                             Frame::default()
                                 .inner_margin(0)
                                 .outer_margin(0)
-                                .fill(self.user.config.theme.secondary_ui_color.background)
+                                .fill(self.user.config.theme.canvas_colors.background)
                                 .stroke(std_stroke),
                         )
                         .show_inside(ui, |ui| {

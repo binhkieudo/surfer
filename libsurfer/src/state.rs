@@ -550,7 +550,7 @@ impl SystemState {
         Visuals {
             override_text_color: Some(self.user.config.theme.foreground),
             extreme_bg_color: self.user.config.theme.secondary_ui_color.background,
-            panel_fill: self.user.config.theme.secondary_ui_color.background,
+            panel_fill: self.user.config.theme.primary_ui_color.background,
             window_fill: self.user.config.theme.primary_ui_color.background,
             window_stroke: Stroke {
                 width: 1.0,
