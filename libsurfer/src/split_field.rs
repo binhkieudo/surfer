@@ -396,10 +396,7 @@ pub fn extract_bits(
     let width = end_bit - start_bit + 1;
     match value {
         VariableValue::BigUint(u) => {
-            use num::bigint::ToBigUint as _;
-            let mask = ((1u128 << width) - 1)
-                .to_biguint()
-                .unwrap_or(BigUint::from(u128::MAX));
+            let mask = (BigUint::from(1u32) << width as usize) - 1u32;
             VariableValue::BigUint((u >> start_bit) & mask)
         }
         VariableValue::String(s) => {

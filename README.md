@@ -7,6 +7,12 @@
 
 A waveform viewer with a focus on a snappy usable interface, and extensibility.
 
+## ⚠️ Personal Fork Disclaimer
+
+**This is a personal fork of the [Surfer project](https://gitlab.com/surfer-project/surfer).** It contains custom modifications and enhancements developed for personal use. While efforts are made to maintain stability and functionality, this fork may diverge from the official upstream project and may contain experimental features or changes that have not been thoroughly tested or reviewed by the Surfer team.
+
+**Warranty Disclaimer:** This software is provided "AS IS" under the EUPL-1.2 license. The licensor provides the work as-is without warranties of any kind, expressed or implied. For full liability and warranty disclaimers, please refer to [Article 7-8 of the EUPL-1.2 License](LICENSE-EUPL-1.2.txt).
+
 ![A screenshot of surfer](snapshots/render_readme_screenshot.png)
 
 ## Documentation
@@ -85,7 +91,7 @@ Contributions to Surfer are very welcome! See the
 suggestions on your own. Some basic [development information](https://gitlab.com/surfer-project/surfer/-/wikis/home)
 is available.
 
-## Recent Improvements (2026-05-18)
+## Recent Improvements (2026-05-18 - 2026-05-20)
 
 ### UI/UX Enhancements
 
@@ -98,6 +104,7 @@ is available.
 
 - ✨ **Split Field**: Extract a bit-slice from any signal, bus, or nested split field
   - Right-click a Variable, Bus, or Split Field → **Group → Split Field**
+  - Press `S` to quickly open Split Field dialog for focused item (keyboard shortcut)
   - A dialog opens with three selection modes:
     - **Start Bit & End Bit** — specify the LSB index and MSB index directly
     - **Start Bit & Width** — specify the LSB index and the number of bits
@@ -106,6 +113,23 @@ is available.
   - Extracted signal is named `source_name[end:start]` and added to the waveform
   - Supports recursive splitting (split a split field again)
   - Supports all standard signal operations: move, rename, color, background color, height scaling, remove, **Format**, **Copy**, **Find Value**, **Split Field**
+
+- ✨ **Find Value Keyboard Shortcut**: Quick access to value search
+  - Press `F` to open Find Value dialog for focused item
+  - Streamlines workflow for frequently searched signals
+  - Dialog supports navigation with **Next** and **Previous** buttons
+
+### Keyboard Shortcuts (2026-05-20)
+
+- 🎮 **Updated Hotkey Bindings**:
+  - `S` — **Split Field** (open dialog for focused item)
+  - `F` — **Find Value** (open dialog for focused item)
+  - `Shift+S` — Go to Start
+  - `Shift+F` — Item Focus
+  - `Shift+Z` — Zoom to Fit (reassigned from `Shift+F`)
+  - `I` — Zoom In (centered on cursor)
+  - `O` — Zoom Out (centered on cursor)
+  - All hotkeys can be customized via `default_config.toml`
 
 - ✨ **Custom Zoom Hotkeys**: Added keyboard shortcuts for waveform zoom
   - Press `I` to zoom in (centered on cursor)

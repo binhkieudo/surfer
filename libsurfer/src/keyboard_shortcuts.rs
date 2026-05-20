@@ -40,6 +40,8 @@ pub enum ShortcutAction {
     DividerAdd,
     ZoomToFit,
     GoToTime,
+    SplitField,
+    FindValue,
 }
 
 // Cached dispatch table entry: (action, modifier_priority)
@@ -111,6 +113,10 @@ pub struct SurferShortcuts {
     pub zoom_to_fit: Vec<KeyboardShortcut>,
     #[serde(with = "keyboard_shortcuts_serde")]
     pub go_to_time: Vec<KeyboardShortcut>,
+    #[serde(with = "keyboard_shortcuts_serde")]
+    pub split_field: Vec<KeyboardShortcut>,
+    #[serde(with = "keyboard_shortcuts_serde")]
+    pub find_value: Vec<KeyboardShortcut>,
 
     #[serde(skip)]
     cached_dispatch_table: Vec<DispatchEntry>,
@@ -265,6 +271,14 @@ impl SurferShortcuts {
                 action: ShortcutAction::GoToTime,
                 priority: modifier_priority(&self.go_to_time),
             },
+            DispatchEntry {
+                action: ShortcutAction::SplitField,
+                priority: modifier_priority(&self.split_field),
+            },
+            DispatchEntry {
+                action: ShortcutAction::FindValue,
+                priority: modifier_priority(&self.find_value),
+            },
         ]);
 
         // Sort by modifier priority (lower number = higher priority)
@@ -304,6 +318,8 @@ impl SurferShortcuts {
             ShortcutAction::DividerAdd => &self.divider_add,
             ShortcutAction::ZoomToFit => &self.zoom_to_fit,
             ShortcutAction::GoToTime => &self.go_to_time,
+            ShortcutAction::SplitField => &self.split_field,
+            ShortcutAction::FindValue => &self.find_value,
         }
     }
 
@@ -475,6 +491,20 @@ impl SurferShortcuts {
             }
             ShortcutAction::GoToTime => {
                 msgs.push(Message::SetRequestTimeEditFocus(true));
+            }
+            ShortcutAction::SplitField => {
+                if let Some(waves) = &state.user.waves
+                    && let Some(vidx) = waves.focused_item
+                {
+                    msgs.push(Message::ShowSplitFieldDialog(vidx));
+                }
+            }
+            ShortcutAction::FindValue => {
+                if let Some(waves) = &state.user.waves
+                    && let Some(vidx) = waves.focused_item
+                {
+                    msgs.push(Message::ShowFindValueDialog(vidx));
+                }
             }
         }
     }
