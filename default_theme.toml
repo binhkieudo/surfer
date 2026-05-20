@@ -61,6 +61,12 @@ Pink = "#c586c0"
 Orange = "#ce9178"
 Gray = "#808080"
 Violet = "#646695"
+White = "#ffffff"
+Cyan = "#00cccc"
+Magenta = "#cc44cc"
+Lime = "#88cc44"
+Aqua = "#44ccaa"
+HotPink = "#cc4488"
 
 [ticks]
 style = { color = "#222222", width = 2 }

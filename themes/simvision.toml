@@ -64,6 +64,12 @@ Pink = "cc88cc"
 Orange = "cc8844"
 Gray = "808080"
 Violet = "8888cc"
+White = "ffffff"
+Cyan = "00ffff"
+Magenta = "ff44ff"
+Lime = "aaff44"
+Aqua = "00ffcc"
+HotPink = "ff4499"
 
 [ticks]
 style = { color = "333333", width = 2 }
