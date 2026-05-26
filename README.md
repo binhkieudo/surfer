@@ -91,7 +91,29 @@ Contributions to Surfer are very welcome! See the
 suggestions on your own. Some basic [development information](https://gitlab.com/surfer-project/surfer/-/wikis/home)
 is available.
 
-## Recent Improvements (2026-05-18 - 2026-05-20 → updated 2026-05-20)
+## Recent Improvements (2026-05-18 - 2026-05-26 → updated 2026-05-26)
+
+### Multi-Waveform Support (2026-05-26)
+
+- ✨ **Open Multiple Waveform Files Simultaneously**
+  - Open additional waveform files via **File → Open file...**, the toolbar **Open file** icon, or on the command line: `surfer wave1.vcd wave2.vcd`
+  - Each file is loaded independently with its own hierarchy and signal set
+  - All open files remain active at the same time — signals from any file can be added to the waveform view
+
+- 🗂️ **Multi-file Scopes Panel**
+  - Each loaded file appears as a separate hierarchy tree in the Scopes panel, labelled with its full absolute file path and a folder icon (📂)
+  - Clicking a scope in any file's tree updates the Variables panel to show the signals in that scope
+  - Both **Separate** and **Tree** hierarchy styles fully support multiple files
+
+- 📐 **Cross-file Time Axis Normalization**
+  - When files have different time lengths, the time axis extends to the longest file so all signals are visible
+  - Timescale units are automatically normalized across files (e.g., a file with `ps` and a file with `ns` display in a common scale)
+  - Signals from shorter files simply end at their last transition without distorting the view
+
+- 🔧 **Robust Secondary Variable Handling**
+  - Variables added from secondary (non-primary) files are stored with `VarId::None` so any accidental primary-container lookup fails gracefully rather than panicking
+  - Color, tooltip, and value lookup all route to the correct file's container based on the variable's `secondary_container_idx`
+  - Index-out-of-bounds crashes when mixing signals from multiple files are fully fixed
 
 ### UI/UX Enhancements
 
@@ -272,6 +294,7 @@ As an indication of the status of the project, here is an incomplete list of sup
   - [x] VCD loading
   - [x] FST loading
   - [x] GHW loading
+  - [x] Multiple waveform files open simultaneously (cross-file signal view, auto timescale normalization)
 - [x] Memory transaction file format support
   - [x] FTR loading
 - [x] [Fuzzy completion based command line interface](misc/surfer_ui_trimmed.mp4)

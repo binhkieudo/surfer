@@ -117,8 +117,24 @@ impl SystemState {
                     .show(ui, |ui| {
                         ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
                         if let Some(waves) = &self.user.waves {
+                            *self.current_scope_container_idx.borrow_mut() = None;
+                            ui.strong(format!(
+                                "📂 {}",
+                                absolute_source_path(&waves.source)
+                            ));
                             self.draw_all_scopes(msgs, waves, false, ui);
                         }
+                        let n_secondary = self.user.secondary_waves.len();
+                        for i in 0..n_secondary {
+                            let display_path =
+                                absolute_source_path(&self.user.secondary_waves[i].source);
+                            ui.separator();
+                            ui.strong(format!("📂 {display_path}"));
+                            ui.push_id(format!("secondary_scope_{i}"), |ui| {
+                                self.draw_secondary_scopes(msgs, i, false, ui);
+                            });
+                        }
+                        *self.current_scope_container_idx.borrow_mut() = None;
                     });
             });
         CentralPanel::default()
@@ -181,6 +197,48 @@ impl SystemState {
     }
 
     fn draw_variables(&mut self, msgs: &mut Vec<Message>, ui: &mut Ui) {
+        // Check if secondary container is active
+        if let Some(sec_idx) = self.user.active_secondary_wave_idx {
+            // Set container index so draw_variable_rows_secondary click handler can route correctly
+            *self.current_scope_container_idx.borrow_mut() = Some(sec_idx);
+            if let Some(secondary) = self.user.secondary_waves.get(sec_idx) {
+                let empty_scope = ScopeType::WaveScope(ScopeRef::empty());
+                let active_scope = secondary.active_scope.clone().unwrap_or(empty_scope);
+                if let ScopeType::WaveScope(scope) = &active_scope {
+                    if let Some(wave_container) = secondary.inner.as_waves() {
+                        let variables = wave_container.variables_in_scope(scope);
+                        // Use the secondary container for filtering to avoid VarId mismatch
+                        let filtered = self.filtered_variables_unsorted_with_container(
+                            &variables,
+                            Some(wave_container),
+                            false,
+                        );
+                        let variable_rows = self.build_variable_rows(wave_container, &filtered);
+                        self.draw_variable_list_header(ui);
+                        let row_height = ui
+                            .text_style_height(&TextStyle::Monospace)
+                            .max(ui.text_style_height(&TextStyle::Body));
+                        ScrollArea::both()
+                            .auto_shrink([false; 2])
+                            .id_salt("variables_secondary")
+                            .show_rows(ui, row_height, variable_rows.len(), |ui, row_range| {
+                                ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
+                                self.draw_variable_rows_secondary(
+                                    msgs,
+                                    wave_container,
+                                    ui,
+                                    &variable_rows,
+                                    Some(&row_range),
+                                    false,
+                                );
+                            });
+                    }
+                }
+            }
+            *self.current_scope_container_idx.borrow_mut() = None;
+            return;
+        }
+
         if let Some(waves) = &self.user.waves {
             let empty_scope = if waves.inner.is_waves() {
                 ScopeType::WaveScope(ScopeRef::empty())
@@ -301,9 +359,25 @@ impl SystemState {
                     ScrollArea::both().id_salt("hierarchy").show(ui, |ui| {
                         ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
                         if let Some(waves) = &self.user.waves {
+                            *self.current_scope_container_idx.borrow_mut() = None;
                             ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
+                            ui.strong(format!(
+                                "📂 {}",
+                                absolute_source_path(&waves.source)
+                            ));
                             self.draw_all_scopes(msgs, waves, true, ui);
                         }
+                        let n_secondary = self.user.secondary_waves.len();
+                        for i in 0..n_secondary {
+                            let display_path =
+                                absolute_source_path(&self.user.secondary_waves[i].source);
+                            ui.separator();
+                            ui.strong(format!("📂 {display_path}"));
+                            ui.push_id(format!("secondary_tree_{i}"), |ui| {
+                                self.draw_secondary_scopes(msgs, i, true, ui);
+                            });
+                        }
+                        *self.current_scope_container_idx.borrow_mut() = None;
                     });
                 });
             },
@@ -453,7 +527,24 @@ impl SystemState {
         ui: &mut Ui,
         scroll_to_label: bool,
     ) {
-        let name = scope.name();
+        let container_idx = *self.current_scope_container_idx.borrow();
+
+        // Build the key for display name lookup
+        let container_key = match container_idx {
+            None => "primary".to_string(),
+            Some(i) => format!("secondary_{i}"),
+        };
+        let scope_path = scope.strs.join(".");
+        let display_name_key = format!("{container_key}|{scope_path}");
+
+        // Use custom display name if set, otherwise use the scope's actual name
+        let name = self
+            .user
+            .scope_display_names
+            .get(&display_name_key)
+            .cloned()
+            .unwrap_or_else(|| scope.name());
+
         let is_selected = wave.active_scope == Some(ScopeType::WaveScope(scope.clone()));
         let mut response = if self.show_hierarchy_icons() {
             let scope_type = wave
@@ -528,34 +619,53 @@ impl SystemState {
                 )));
             });
         }
+        let scope_for_menu = scope.clone();
         response.context_menu(|ui| {
+            // Only show Add actions for primary container (secondary vars go to primary waveform)
             if ui.button("Add scope").clicked() {
-                msgs.push(Message::AddScope(scope.clone(), false));
+                msgs.push(Message::AddScope(scope_for_menu.clone(), false));
+                ui.close();
             }
             if ui.button("Add scope recursively").clicked() {
-                msgs.push(Message::AddScope(scope.clone(), true));
+                msgs.push(Message::AddScope(scope_for_menu.clone(), true));
+                ui.close();
             }
             if ui.button("Add scope as group").clicked() {
-                msgs.push(Message::AddScopeAsGroup(scope.clone(), false));
+                msgs.push(Message::AddScopeAsGroup(scope_for_menu.clone(), false));
+                ui.close();
             }
             if ui.button("Add scope as group recursively").clicked() {
-                msgs.push(Message::AddScopeAsGroup(scope.clone(), true));
+                msgs.push(Message::AddScopeAsGroup(scope_for_menu.clone(), true));
+                ui.close();
             }
             if wave
                 .inner
                 .as_waves()
-                .is_some_and(|wc| wc.scope_is_array(scope))
+                .is_some_and(|wc| wc.scope_is_array(&scope_for_menu))
                 && ui.button("Show frame buffer").clicked()
             {
-                msgs.push(Message::SetFrameBufferArray(scope.clone()));
+                msgs.push(Message::SetFrameBufferArray(scope_for_menu.clone()));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Rename").clicked() {
+                msgs.push(Message::ShowRenameScopeDialog(
+                    container_idx,
+                    scope_for_menu.clone(),
+                ));
+                ui.close();
             }
         });
         response.clicked().then(|| {
-            msgs.push(Message::SetActiveScope(if is_selected {
+            let scope_opt = if is_selected {
                 None
             } else {
                 Some(ScopeType::WaveScope(scope.clone()))
-            }));
+            };
+            match container_idx {
+                None => msgs.push(Message::SetActiveScope(scope_opt)),
+                Some(idx) => msgs.push(Message::SetActiveScopeFromWave(Some(idx), scope_opt)),
+            }
         });
     }
 
@@ -595,10 +705,12 @@ impl SystemState {
             });
         } else {
             let should_open_header = self.should_open_header_and_scroll_to(scope);
+            let container_idx = *self.current_scope_container_idx.borrow();
+            let collapsing_id = egui::Id::new((container_idx, scope));
             let mut collapsing_header =
                 egui::collapsing_header::CollapsingState::load_with_default_open(
                     ui.ctx(),
-                    egui::Id::new(scope),
+                    collapsing_id,
                     false,
                 );
             if let Some((header_state, _)) = should_open_header {
@@ -933,6 +1045,225 @@ impl SystemState {
         }
     }
 
+    /// Draw scope tree for a secondary wave container (idx into secondary_waves).
+    pub fn draw_secondary_scopes(
+        &self,
+        msgs: &mut Vec<Message>,
+        idx: usize,
+        draw_variables: bool,
+        ui: &mut Ui,
+    ) {
+        *self.current_scope_container_idx.borrow_mut() = Some(idx);
+        if let Some(secondary) = self.user.secondary_waves.get(idx) {
+            for scope_type in secondary.inner.root_scopes() {
+                if let ScopeType::WaveScope(scope) = scope_type {
+                    ui.push_id(format!("sec_{idx}_{}", scope.name()), |ui| {
+                        self.draw_selectable_child_or_orphan_scope(
+                            msgs,
+                            secondary,
+                            &scope,
+                            draw_variables,
+                            ui,
+                        );
+                    });
+                }
+            }
+        }
+    }
+
+    /// Like `draw_variable_rows` but for secondary containers.
+    /// When a variable is clicked, its VarId is cleared so the primary container looks
+    /// it up by path (which works when both files share the same scope hierarchy).
+    fn draw_variable_rows_secondary(
+        &self,
+        msgs: &mut Vec<Message>,
+        _wave_container: &WaveContainer,
+        ui: &mut Ui,
+        variable_rows: &[VariableListRow],
+        row_range: Option<&Range<usize>>,
+        display_full_path: bool,
+    ) {
+
+        let variable_rows = if let Some(range) = row_range {
+            let start = range.start.min(variable_rows.len());
+            let end = range.end.min(variable_rows.len());
+            &variable_rows[start..end]
+        } else {
+            variable_rows
+        };
+
+        let monospace_font = ui
+            .style()
+            .text_styles
+            .get(&TextStyle::Monospace)
+            .cloned()
+            .unwrap();
+        let body_font = ui
+            .style()
+            .text_styles
+            .get(&TextStyle::Body)
+            .cloned()
+            .unwrap();
+        let char_width_mono = ui.fonts_mut(|fonts| {
+            fonts
+                .layout_no_wrap(" ".to_string(), monospace_font.clone(), ecolor::Color32::BLACK)
+                .size()
+                .x
+        });
+        let available_space = ui.available_width() - ui.spacing().button_padding.x * 2.;
+
+        for row in variable_rows {
+            let variable = &row.variable;
+            let meta = row.meta.as_ref();
+            let name_info = row.name_info.clone();
+
+            let index = meta
+                .and_then(|meta| meta.index)
+                .map(|index| {
+                    if self.show_variable_indices() {
+                        format!(" {index}")
+                    } else {
+                        String::new()
+                    }
+                })
+                .unwrap_or_default();
+
+            let (type_icon, icon_color) = if self.show_hierarchy_icons() {
+                let (icon, color) = self.user.config.theme.variable_icons.get_icon(meta);
+                (format!("{icon} "), color)
+            } else {
+                (String::new(), self.user.config.theme.foreground)
+            };
+
+            let direction = self
+                .show_variable_direction()
+                .then(|| crate::variable_direction::get_direction_string(meta, name_info.as_ref()))
+                .flatten()
+                .unwrap_or_default();
+
+            let value = String::new();
+
+            ui.with_layout(
+                Layout::top_down(Align::LEFT).with_cross_justify(true),
+                |ui| {
+                    let mut label = LayoutJob::default();
+                    let true_name = name_info.and_then(|info| info.true_name);
+                    let font = if true_name.is_some() {
+                        monospace_font.clone()
+                    } else {
+                        body_font.clone()
+                    };
+                    let icon_format = TextFormat {
+                        font_id: font.clone(),
+                        color: icon_color,
+                        ..Default::default()
+                    };
+                    let text_format = TextFormat {
+                        font_id: font,
+                        color: self.user.config.theme.foreground,
+                        ..Default::default()
+                    };
+
+                    if let Some(name) = true_name {
+                        let used_space = ((type_icon.chars().count()
+                            + direction.chars().count()
+                            + index.chars().count())
+                            as f32)
+                            * char_width_mono;
+                        let space_for_name = available_space - used_space;
+                        label.append(&type_icon, 0.0, icon_format);
+                        label.append(&direction, 0.0, text_format.clone());
+                        crate::view::draw_true_name(
+                            &name,
+                            &mut label,
+                            monospace_font.clone(),
+                            self.user.config.theme.foreground,
+                            char_width_mono,
+                            space_for_name,
+                            self.user.config.layout.waveforms_line_height,
+                        );
+                        label.append(&index, 0.0, text_format);
+                    } else {
+                        let name = if display_full_path {
+                            variable.full_path_string()
+                        } else {
+                            variable.name.clone()
+                        };
+                        label.append(&type_icon, 0.0, icon_format);
+                        label.append(&direction, 0.0, text_format.clone());
+                        label.append(&name, 0.0, text_format.clone());
+                        label.append(&index, 0.0, text_format.clone());
+                        label.append(&value, 0.0, text_format);
+                    }
+
+                    let mut response = ui.add(egui::Button::selectable(false, label));
+
+                    if self.show_tooltip() {
+                        let tooltip_meta = meta;
+                        let tooltip_var = variable.clone();
+                        response = response.on_hover_ui(move |ui| {
+                            ui.set_max_width(ui.spacing().tooltip_width);
+                            ui.add(egui::Label::new(crate::tooltips::variable_tooltip_text(
+                                tooltip_meta,
+                                &tooltip_var,
+                            )));
+                        });
+                    }
+
+                    // When a secondary variable is clicked, send it as-is with its
+                    // original VarId so the secondary container loads its own signal data.
+                    response.clicked().then(|| {
+                        let sec_idx = *self.current_scope_container_idx.borrow();
+                        if let Some(idx) = sec_idx {
+                            msgs.push(Message::AddVariableFromSecondary(idx, variable.clone()));
+                        }
+                    });
+                },
+            );
+        }
+    }
+
+    /// Draw the rename scope dialog if active.
+    pub fn draw_rename_scope_dialog(&mut self, ui: &mut Ui, msgs: &mut Vec<Message>) {
+        let Some((_, ref scope_path, ref mut new_name)) = self.user.renaming_scope else {
+            return;
+        };
+        let scope_path = scope_path.clone();
+        let mut commit = false;
+        let mut cancel = false;
+
+        egui::Window::new("Rename Scope")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.label(format!("Scope: {scope_path}"));
+                ui.add_space(4.0);
+                let response = ui.text_edit_singleline(new_name);
+                response.request_focus();
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    commit = true;
+                }
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.button("OK").clicked() {
+                        commit = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+
+        if commit {
+            msgs.push(Message::CommitScopeRename);
+        } else if cancel {
+            msgs.push(Message::CancelScopeRename);
+        }
+    }
+
     fn should_open_header_and_scroll_to(&self, scope: &ScopeRef) -> Option<(bool, bool)> {
         let mut scope_ref_cell = self.scope_ref_to_expand.borrow_mut();
         if let Some(state) = scope_ref_cell.as_mut() {
@@ -951,5 +1282,15 @@ impl SystemState {
             }
         }
         None
+    }
+}
+
+fn absolute_source_path(source: &WaveSource) -> String {
+    match source {
+        WaveSource::File(path) => path
+            .canonicalize_utf8()
+            .map(|p| p.to_string())
+            .unwrap_or_else(|_| path.to_string()),
+        _ => source.to_string(),
     }
 }
