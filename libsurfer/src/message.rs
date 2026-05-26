@@ -178,7 +178,8 @@ pub enum Message {
     ),
     #[serde(skip)]
     /// Message sent when waveform file body is loaded.
-    WaveBodyLoaded(web_time::Instant, WaveSource, #[debug(skip)] BodyResult),
+    /// The Option<usize> is Some(idx) when routing to secondary_waves[idx], None for primary.
+    WaveBodyLoaded(web_time::Instant, WaveSource, #[debug(skip)] BodyResult, Option<usize>),
     #[serde(skip)]
     WavesLoaded(
         WaveSource,
@@ -514,4 +515,17 @@ pub enum Message {
         start_bit: u32,
         end_bit: u32,
     },
+    /// Set the active scope in a specific wave container (None = primary, Some(i) = secondary[i])
+    SetActiveScopeFromWave(Option<usize>, Option<ScopeType>),
+    /// Show the rename scope dialog for a scope in a specific wave container
+    ShowRenameScopeDialog(Option<usize>, ScopeRef),
+    /// Update the text being edited in the rename scope dialog
+    UpdateRenameScopeText(String),
+    /// Commit the rename scope operation
+    CommitScopeRename,
+    /// Cancel the rename scope dialog
+    CancelScopeRename,
+    /// Add a variable from a secondary wave container to the primary waveform display.
+    /// The VariableRef retains its original VarId from the secondary container.
+    AddVariableFromSecondary(usize, VariableRef),
 }

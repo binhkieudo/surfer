@@ -36,6 +36,17 @@ use crate::{
     CachedDrawData, CachedTransactionDrawData, CachedWaveDrawData, Message, SystemState,
 };
 
+/// Convert a TimeScale to a floating-point scale factor in seconds per time unit.
+/// Used to compare and convert between different file timescales.
+fn timescale_factor(ts: &crate::time::TimeScale) -> f64 {
+    if ts.unit == crate::time::TimeUnit::None {
+        return 1.0; // unknown unit: treat as 1:1
+    }
+    let exp = ts.unit.exponent() as f64;
+    let multiplier = ts.multiplier.unwrap_or(1) as f64;
+    multiplier * 10f64.powf(exp)
+}
+
 /// Information about values to mimic dinotrace's special drawing of all-0 and all-1 values
 #[derive(Clone, Copy)]
 enum DinotraceDrawingStyle {
@@ -482,12 +493,51 @@ fn variable_draw_commands(
     display_id: DisplayedItemRef,
     timestamps: &[(f32, num::BigUint)],
     waves: &WaveData,
+    secondary_waves: &[WaveData],
+    primary_scale: f64,
+    effective_num_timestamps: &BigInt,
     translators: &TranslatorList,
     view_width: f32,
     viewport_idx: usize,
     use_dinotrace_style: bool,
 ) -> Option<VariableDrawCommands> {
-    let wave_container = waves.inner.as_waves()?;
+    // Use secondary container for signal queries when variable comes from a secondary source.
+    let wave_container = displayed_variable
+        .secondary_container_idx
+        .and_then(|idx| secondary_waves.get(idx))
+        .and_then(|w| w.inner.as_waves())
+        .or_else(|| waves.inner.as_waves())?;
+
+    // Compute the time conversion ratio from primary to secondary time units.
+    // ratio > 1 means secondary uses finer time units (e.g., primary=ns, secondary=ps → ratio=1000).
+    let time_ratio = displayed_variable
+        .secondary_container_idx
+        .and_then(|idx| secondary_waves.get(idx))
+        .map(|sw| {
+            let sec_scale = timescale_factor(&sw.inner.metadata().timescale);
+            if sec_scale > 0.0 && primary_scale > 0.0 {
+                primary_scale / sec_scale
+            } else {
+                1.0
+            }
+        })
+        .unwrap_or(1.0);
+
+    // Pre-convert timestamps from primary to secondary time units when needed.
+    // This allows querying the secondary container at its native time resolution.
+    let converted_buf: Vec<(f32, BigUint)>;
+    let effective_timestamps: &[(f32, BigUint)] = if (time_ratio - 1.0).abs() > 1e-10 {
+        converted_buf = timestamps
+            .iter()
+            .map(|(x, t)| {
+                let t_converted = (t.to_f64().unwrap_or(0.0) * time_ratio).max(0.0) as u64;
+                (*x, BigUint::from(t_converted))
+            })
+            .collect();
+        &converted_buf
+    } else {
+        timestamps
+    };
 
     let signal_id = wave_container
         .signal_id(&displayed_variable.variable_ref)
@@ -522,6 +572,7 @@ fn variable_draw_commands(
             displayed_variable,
             display_id,
             waves,
+            secondary_waves,
             translators,
             view_width,
             viewport_idx,
@@ -530,7 +581,9 @@ fn variable_draw_commands(
         variable_digital_draw_commands(
             displayed_variable,
             display_id,
-            timestamps,
+            effective_timestamps,
+            time_ratio,
+            effective_num_timestamps,
             waves,
             translators,
             wave_container,
@@ -550,6 +603,8 @@ fn variable_digital_draw_commands(
     displayed_variable: &DisplayedVariable,
     display_id: DisplayedItemRef,
     timestamps: &[(f32, num::BigUint)],
+    time_ratio: f64,
+    effective_num_timestamps: &BigInt,
     waves: &WaveData,
     translators: &TranslatorList,
     wave_container: &crate::wave_container::WaveContainer,
@@ -563,7 +618,7 @@ fn variable_digital_draw_commands(
     let mut clock_edges = vec![];
     let mut local_msgs = vec![];
     let displayed_field_ref: DisplayedFieldRef = display_id.into();
-    let num_timestamps = waves.safe_num_timestamps();
+    let num_timestamps = effective_num_timestamps.clone();
 
     let mut local_commands: HashMap<Vec<String>, DigitalDrawingCommands> = HashMap::new();
 
@@ -591,11 +646,21 @@ fn variable_digital_draw_commands(
             Ok(Some(QueryResult {
                 next: Some(timestamp),
                 ..
-            })) => waves.viewports[viewport_idx].pixel_from_time(
-                &timestamp.to_bigint().unwrap(),
-                view_width,
-                &num_timestamps,
-            ),
+            })) => {
+                // timestamp is in the container's native time units (secondary for cross-file vars).
+                // Convert back to primary time units for correct pixel mapping.
+                let primary_timestamp = if (time_ratio - 1.0).abs() > 1e-10 {
+                    let t_primary = timestamp.to_f64().unwrap_or(0.0) / time_ratio;
+                    BigInt::from(t_primary as i64)
+                } else {
+                    timestamp.to_bigint().unwrap()
+                };
+                waves.viewports[viewport_idx].pixel_from_time(
+                    &primary_timestamp,
+                    view_width,
+                    &num_timestamps,
+                )
+            }
             // If we don't have a next timestamp, we don't need to recheck until the last time
             // step
             Ok(_) => timestamps.last().map(|t| t.0).unwrap_or_default(),
@@ -759,17 +824,42 @@ impl SystemState {
     ) -> Option<CachedDrawData> {
         let mut draw_commands = HashMap::new();
 
-        let num_timestamps = waves.safe_num_timestamps();
-        let max_time = num_timestamps.to_f64().unwrap_or(f64::MAX);
+        let primary_num_timestamps = waves.safe_num_timestamps();
+        let primary_scale = timescale_factor(&waves.inner.metadata().timescale);
+
+        // Compute the effective time range as the maximum across primary and all secondary files,
+        // with each secondary's end time converted into primary time units for comparison.
+        let effective_num_timestamps = {
+            let secondary_max = self
+                .user
+                .secondary_waves
+                .iter()
+                .filter_map(|sw| {
+                    let sec_scale = timescale_factor(&sw.inner.metadata().timescale);
+                    let sec_max = sw.safe_num_timestamps().to_f64()?;
+                    if primary_scale > 0.0 && sec_scale > 0.0 {
+                        Some(BigInt::from((sec_max * sec_scale / primary_scale) as i64))
+                    } else {
+                        None
+                    }
+                })
+                .max();
+            secondary_max
+                .map(|sec| primary_num_timestamps.clone().max(sec))
+                .unwrap_or_else(|| primary_num_timestamps.clone())
+        };
+
+        let max_time = effective_num_timestamps.to_f64().unwrap_or(f64::MAX);
         let mut clock_edges_by_clock = vec![];
         let viewport = waves.viewports[viewport_idx];
         // Compute which timestamp to draw in each pixel. We'll draw from -extra_draw_width to
-        // width + extra_draw_width in order to draw initial transitions outside the screen
+        // width + extra_draw_width in order to draw initial transitions outside the screen.
+        // Timestamps are in primary file time units.
         let timestamps = (-cfg.extra_draw_width..(cfg.canvas_size.x as i32 + cfg.extra_draw_width))
             .into_par_iter()
             .filter_map(|x| {
                 let time = viewport
-                    .as_absolute_time(f64::from(x), cfg.canvas_size.x, &num_timestamps)
+                    .as_absolute_time(f64::from(x), cfg.canvas_size.x, &effective_num_timestamps)
                     .0;
                 if time < 0. || time > max_time {
                     None
@@ -781,6 +871,8 @@ impl SystemState {
 
         let use_dinotrace_style = self.use_dinotrace_style();
         let translators = &self.translators;
+
+        let secondary_waves = &self.user.secondary_waves;
 
         // Collect variable draw commands (parallel)
         let variable_commands: Vec<VariableDrawCommands> = waves
@@ -800,6 +892,9 @@ impl SystemState {
                     id,
                     &timestamps,
                     waves,
+                    secondary_waves,
+                    primary_scale,
+                    &effective_num_timestamps,
                     translators,
                     cfg.canvas_size.x,
                     viewport_idx,
@@ -1402,10 +1497,15 @@ impl SystemState {
 
                         let color = color.unwrap_or_else(|| {
                             if let Some(DisplayedItem::Variable(variable)) = displayed_item {
-                                waves
-                                    .inner
-                                    .as_waves()
-                                    .and_then(|w| w.variable_meta(&variable.variable_ref).ok())
+                                let wc = if let Some(idx) = variable.secondary_container_idx {
+                                    self.user
+                                        .secondary_waves
+                                        .get(idx)
+                                        .and_then(|sw| sw.inner.as_waves())
+                                } else {
+                                    waves.inner.as_waves()
+                                };
+                                wc.and_then(|w| w.variable_meta(&variable.variable_ref).ok())
                                     .and_then(|meta| {
                                         if meta.is_event() {
                                             Some(self.user.config.theme.variable_event)

@@ -183,6 +183,9 @@ pub struct DisplayedVariable {
     pub field_formats: Vec<FieldFormat>,
     pub height_scaling_factor: Option<f32>,
     pub analog: Option<AnalogVarState>,
+    /// Index into `UserState::secondary_waves` if this variable comes from a secondary container.
+    #[serde(skip, default)]
+    pub secondary_container_idx: Option<usize>,
 }
 
 impl DisplayedVariable {
@@ -331,6 +334,7 @@ impl DisplayedPlaceholder {
             field_formats: self.field_formats,
             height_scaling_factor: self.height_scaling_factor,
             analog: self.analog,
+            secondary_container_idx: None,
         }
     }
 

@@ -64,6 +64,30 @@ impl SystemState {
         });
     }
 
+    /// Open a file dialog that allows selecting multiple files. First file uses `primary_options`,
+    /// subsequent files use `LoadOptions::AddAsSecondary`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn file_dialog_open_multiple<F>(
+        &mut self,
+        title: &'static str,
+        filter: (String, Vec<String>),
+        messages: F,
+    ) where
+        F: FnOnce(Vec<PathBuf>) -> Vec<Message> + Send + 'static,
+    {
+        let sender = self.channels.msg_sender.clone();
+
+        perform_async_work(async move {
+            let files = create_file_dialog(filter, title).pick_files().await;
+            if let Some(files) = files {
+                let paths: Vec<PathBuf> = files.iter().map(|f| f.path().to_path_buf()).collect();
+                if !paths.is_empty() {
+                    checked_send_many(&sender, messages(paths));
+                }
+            }
+        });
+    }
+
     #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
     pub(crate) fn file_dialog_open<F>(
         &mut self,
@@ -139,26 +163,36 @@ impl SystemState {
                 LoadOptions::Clear => "waveform_clear",
                 LoadOptions::KeepAvailable => "waveform_keep_available",
                 LoadOptions::KeepAll => "waveform_keep_all",
+                LoadOptions::AddAsSecondary => "waveform_clear",
             };
             vscode_open_dialog_with_filter(kind, &filter);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
-        let message = move |file: PathBuf| match Utf8PathBuf::from_path_buf(file.clone()) {
-            Ok(utf8_path) => vec![Message::LoadFile(utf8_path, load_options)],
-            Err(_) => {
-                vec![Message::Error(eyre::eyre!(
-                    "File path '{}' contains invalid UTF-8",
-                    file.display()
-                ))]
+        let message = move |files: Vec<PathBuf>| {
+            let mut msgs = vec![];
+            for (i, file) in files.iter().enumerate() {
+                let opts = if i == 0 {
+                    load_options
+                } else {
+                    LoadOptions::AddAsSecondary
+                };
+                match Utf8PathBuf::from_path_buf(file.clone()) {
+                    Ok(utf8_path) => msgs.push(Message::LoadFile(utf8_path, opts)),
+                    Err(_) => msgs.push(Message::Error(eyre::eyre!(
+                        "File path '{}' contains invalid UTF-8",
+                        file.display()
+                    ))),
+                }
             }
+            msgs
         };
 
         #[cfg(all(target_arch = "wasm32", not(feature = "vscode")))]
         let message = move |file: Vec<u8>| vec![Message::LoadFromData(file, load_options)];
 
         #[cfg(not(all(target_arch = "wasm32", feature = "vscode")))]
-        self.file_dialog_open("Open waveform file", filter, message);
+        self.file_dialog_open_multiple("Open waveform file(s)", filter, message);
     }
 
     pub(crate) fn open_command_file_dialog(&mut self) {

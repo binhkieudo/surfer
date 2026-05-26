@@ -158,6 +158,22 @@ pub struct UserState {
     /// State for the Split Field extraction dialog (None when closed).
     #[serde(skip, default)]
     pub(crate) split_field_dialog_state: Option<SplitFieldDialogState>,
+
+    /// Additional wave containers loaded alongside the primary, for multi-file support.
+    #[serde(skip, default)]
+    pub secondary_waves: Vec<WaveData>,
+
+    /// Index into secondary_waves that currently has scope/variable focus (None = primary waves).
+    #[serde(skip, default)]
+    pub active_secondary_wave_idx: Option<usize>,
+
+    /// Custom display names for scopes. Key: "container_key|scope_full_path".
+    #[serde(skip, default)]
+    pub scope_display_names: std::collections::HashMap<String, String>,
+
+    /// Active rename dialog state: (container_key, scope_full_path, new_name_being_edited).
+    #[serde(skip, default)]
+    pub renaming_scope: Option<(String, String, String)>,
 }
 
 // Impl needed since for loading we need to put State into a Message
@@ -247,6 +263,10 @@ impl Default for UserState {
             marker_delta_dialog_state: MarkerDeltaDialogState::default(),
             find_value_state: None,
             split_field_dialog_state: None,
+            secondary_waves: Vec::new(),
+            active_secondary_wave_idx: None,
+            scope_display_names: std::collections::HashMap::new(),
+            renaming_scope: None,
         }
     }
 }
@@ -274,6 +294,26 @@ impl SystemState {
                 error!("Attempted to load from drag and drop at startup (how?)");
             }
             None => {}
+        }
+
+        for wave in args.additional_waves {
+            match wave {
+                WaveSource::File(file) => {
+                    self.add_batch_message(Message::LoadFile(
+                        file,
+                        LoadOptions::AddAsSecondary,
+                    ));
+                }
+                WaveSource::Url(url) => {
+                    self.add_batch_message(Message::LoadWaveformFileFromUrl(
+                        url,
+                        LoadOptions::AddAsSecondary,
+                    ));
+                }
+                _ => {
+                    error!("Unsupported additional wave source type");
+                }
+            }
         }
 
         if let Some(port) = args.wcp_initiate {
@@ -324,6 +364,46 @@ impl SystemState {
         new_waves: Box<WaveContainer>,
         load_options: LoadOptions,
     ) {
+        if load_options == LoadOptions::AddAsSecondary {
+            info!("{format} secondary file loaded: {filename}");
+            let viewport = crate::viewport::Viewport::new();
+            let secondary = WaveData {
+                inner: DataContainer::Waves(*new_waves),
+                source: filename.clone(),
+                format,
+                active_scope: None,
+                items_tree: DisplayedItemTree::default(),
+                displayed_items: HashMap::new(),
+                viewports: vec![viewport],
+                cursor: None,
+                markers: HashMap::new(),
+                annotations: Vec::new(),
+                selected_annotation: None,
+                annotation_counter: 0,
+                last_active_viewport_idx: 0,
+                annotation_menu_pos: None,
+                annotation_menu_time: None,
+                focused_item: None,
+                focused_transaction: (None, None),
+                default_variable_name_type: self.user.config.default_variable_name_type,
+                display_variable_indices: self.show_variable_indices(),
+                scroll_offset: 0.,
+                drawing_infos: vec![],
+                top_item_draw_offset: 0.,
+                total_height: 0.,
+                display_item_ref_counter: 0,
+                old_num_timestamps: None,
+                graphics: HashMap::new(),
+                cache_generation: 0,
+                inflight_caches: HashMap::new(),
+                annotation_groups: vec![],
+                annotation_list_visible: false,
+            };
+            self.user.secondary_waves.push(secondary);
+            self.record_file_history(&filename);
+            return;
+        }
+
         let filename_for_title = filename.clone();
         info!("{format} file loaded");
         let viewport = Viewport::new();

@@ -42,8 +42,9 @@ mod main_impl {
     #[derive(clap::Parser, Default)]
     #[command(version = concat!(env!("CARGO_PKG_VERSION"), " (git: ", env!("VERGEN_GIT_DESCRIBE"), ")"), about)]
     struct Args {
-        /// Waveform file in VCD, FST, or GHW format.
-        wave_file: Option<String>,
+        /// Waveform files in VCD, FST, or GHW format. First file is primary; additional files
+        /// are loaded as secondary and shown in the Scopes panel.
+        wave_files: Vec<String>,
         /// Path to a file containing 'commands' to run after a waveform has been loaded.
         /// The commands are the same as those used in the command line interface inside the program.
         /// Commands are separated by lines or ;. Empty lines are ignored. Line comments starting with
@@ -88,8 +89,12 @@ mod main_impl {
             .command_file()
             .map(read_command_file)
             .unwrap_or_default();
+        let mut wave_iter = args.wave_files.iter();
+        let primary = wave_iter.next().map(|s| string_to_wavesource(s));
+        let additional = wave_iter.map(|s| string_to_wavesource(s)).collect();
         StartupParams {
-            waves: args.wave_file.map(|s| string_to_wavesource(&s)),
+            waves: primary,
+            additional_waves: additional,
             wcp_initiate: args.wcp_initiate,
             startup_commands,
         }

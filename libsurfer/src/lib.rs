@@ -162,6 +162,8 @@ pub(crate) static WCP_SC_HANDLER: LazyLock<GlobalChannelTx<WcpSCMessage>> =
 #[derive(Default)]
 pub struct StartupParams {
     pub waves: Option<WaveSource>,
+    /// Additional wave files to load alongside the primary (multi-file support)
+    pub additional_waves: Vec<WaveSource>,
     pub wcp_initiate: Option<u16>,
     pub startup_commands: Vec<String>,
 }
@@ -311,6 +313,8 @@ impl SystemState {
             Message::SetActiveScope(scope) => {
                 let waves = self.user.waves.as_mut()?;
                 waves.set_active_scope(scope)?;
+                // Clear secondary focus when primary scope is selected
+                self.user.active_secondary_wave_idx = None;
             }
             Message::ExpandScope(scope_ref) => {
                 *self.scope_ref_to_expand.borrow_mut() = Some(scope_ref);
@@ -1280,8 +1284,14 @@ impl SystemState {
                             new_waves,
                             load_options,
                         );
+                        // compute secondary index after on_waves_loaded pushed to secondary_waves
+                        let secondary_idx = if load_options == LoadOptions::AddAsSecondary {
+                            Some(self.user.secondary_waves.len() - 1)
+                        } else {
+                            None
+                        };
                         // start parsing of the body
-                        self.load_wave_body(source, header.body, header.body_len, shared_hierarchy);
+                        self.load_wave_body(source, header.body, header.body_len, shared_hierarchy, secondary_idx);
                     }
                     HeaderResult::LocalBytes(header) => {
                         // register waveform as loaded (but with no variable info yet!)
@@ -1294,8 +1304,14 @@ impl SystemState {
                             new_waves,
                             load_options,
                         );
+                        // compute secondary index after on_waves_loaded pushed to secondary_waves
+                        let secondary_idx = if load_options == LoadOptions::AddAsSecondary {
+                            Some(self.user.secondary_waves.len() - 1)
+                        } else {
+                            None
+                        };
                         // start parsing of the body
-                        self.load_wave_body(source, header.body, header.body_len, shared_hierarchy);
+                        self.load_wave_body(source, header.body, header.body_len, shared_hierarchy, secondary_idx);
                     }
                     HeaderResult::Remote(hierarchy, file_format, server, file_index) => {
                         // register waveform as loaded (but with no variable info yet!)
@@ -1319,76 +1335,129 @@ impl SystemState {
                     }
                 }
             }
-            Message::WaveBodyLoaded(start, source, body) => {
+            Message::WaveBodyLoaded(start, source, body, secondary_idx) => {
                 // for files using the `wellen` backend, parse the body in a second step
                 info!("Loaded the body of {source} in {:?}", start.elapsed());
                 self.progress_tracker = None;
-                let waves = self
-                    .user
-                    .waves
-                    .as_mut()
-                    .expect("Waves should be loaded at this point!");
-                // add source and time table
-                let maybe_cmd = waves // TODO
-                    .inner
-                    .as_waves_mut()?
-                    .wellen_add_body(body)
-                    .map_err(|err| {
-                        error!("While getting commands to lazy-load signals: {err:?}");
-                    })
-                    .ok()
-                    .flatten();
-                // Pre-load parameters
-                let param_cmd = waves
-                    .inner
-                    .as_waves_mut()?
-                    .load_parameters()
-                    .map_err(|err| {
-                        error!("While getting commands to lazy-load parameters: {err:?}");
-                    })
-                    .ok()
-                    .flatten();
 
-                if self.wcp_greeted_signal.load(Ordering::Relaxed)
-                    && self.wcp_client_capabilities.waveforms_loaded
-                {
-                    let source = match source {
-                        WaveSource::File(path) => path.to_string(),
-                        WaveSource::Url(url) => url,
-                        _ => String::new(),
-                    };
-                    self.channels.wcp_s2c_sender.as_ref().map(|ch| {
-                        block_on(
-                            ch.send(WcpSCMessage::event(WcpEvent::waveforms_loaded { source })),
-                        )
-                    });
-                }
+                if let Some(sec_idx) = secondary_idx {
+                    // Route body to the correct secondary container
+                    let secondary = self
+                        .user
+                        .secondary_waves
+                        .get_mut(sec_idx)
+                        .expect("Secondary wave container should exist");
+                    let maybe_cmd = secondary
+                        .inner
+                        .as_waves_mut()?
+                        .wellen_add_body(body)
+                        .map_err(|err| {
+                            error!("While getting commands to lazy-load signals: {err:?}");
+                        })
+                        .ok()
+                        .flatten();
+                    secondary.update_viewports();
+                    self.invalidate_draw_commands();
+                    if let Some(cmd) = maybe_cmd {
+                        self.load_variables(cmd);
+                    }
+                } else {
+                    let waves = self
+                        .user
+                        .waves
+                        .as_mut()
+                        .expect("Waves should be loaded at this point!");
+                    // add source and time table
+                    let maybe_cmd = waves
+                        .inner
+                        .as_waves_mut()?
+                        .wellen_add_body(body)
+                        .map_err(|err| {
+                            error!("While getting commands to lazy-load signals: {err:?}");
+                        })
+                        .ok()
+                        .flatten();
+                    // Pre-load parameters
+                    let param_cmd = waves
+                        .inner
+                        .as_waves_mut()?
+                        .load_parameters()
+                        .map_err(|err| {
+                            error!("While getting commands to lazy-load parameters: {err:?}");
+                        })
+                        .ok()
+                        .flatten();
 
-                // update viewports, now that we have the time table
-                waves.update_viewports();
-                // make sure we redraw
-                self.invalidate_draw_commands();
-                // start loading parameters
-                if let Some(cmd) = param_cmd {
-                    self.load_variables(cmd);
-                }
-                // start loading variables
-                if let Some(cmd) = maybe_cmd {
-                    self.load_variables(cmd);
+                    if self.wcp_greeted_signal.load(Ordering::Relaxed)
+                        && self.wcp_client_capabilities.waveforms_loaded
+                    {
+                        let source = match source {
+                            WaveSource::File(path) => path.to_string(),
+                            WaveSource::Url(url) => url,
+                            _ => String::new(),
+                        };
+                        self.channels.wcp_s2c_sender.as_ref().map(|ch| {
+                            block_on(
+                                ch.send(WcpSCMessage::event(WcpEvent::waveforms_loaded { source })),
+                            )
+                        });
+                    }
+
+                    // update viewports, now that we have the time table
+                    waves.update_viewports();
+                    // make sure we redraw
+                    self.invalidate_draw_commands();
+                    // start loading parameters
+                    if let Some(cmd) = param_cmd {
+                        self.load_variables(cmd);
+                    }
+                    // start loading variables
+                    if let Some(cmd) = maybe_cmd {
+                        self.load_variables(cmd);
+                    }
                 }
             }
             Message::SignalsLoaded(start, res) => {
                 info!("Loaded {} variables in {:?}", res.len(), start.elapsed());
                 self.progress_tracker = None;
-                let waves = self
-                    .user
-                    .waves
-                    .as_mut()
-                    .expect("Waves should be loaded at this point!");
-                match waves.inner.as_waves_mut()?.on_signals_loaded(res) {
-                    Err(err) => error!("{err:?}"),
-                    Ok(Some(cmd)) => self.load_variables(cmd),
-                    _ => {}
+                let from_id = res.from_unique_id();
+
+                // Route to the container whose unique_id matches from_id.
+                // Try primary first, then each secondary.
+                let mut res = Some(res);
+                let mut cmd = None;
+
+                if let Some(waves) = self.user.waves.as_mut() {
+                    if let Some(wc) = waves.inner.as_waves_mut() {
+                        if wc.can_handle_signals(from_id) {
+                            if let Some(r) = res.take() {
+                                match wc.on_signals_loaded(r) {
+                                    Err(err) => error!("{err:?}"),
+                                    Ok(c) => cmd = c,
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if res.is_some() {
+                    for secondary in &mut self.user.secondary_waves {
+                        if let Some(wc) = secondary.inner.as_waves_mut() {
+                            if wc.can_handle_signals(from_id) {
+                                if let Some(r) = res.take() {
+                                    match wc.on_signals_loaded(r) {
+                                        Err(err) => error!("{err:?}"),
+                                        Ok(c) => cmd = c,
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if let Some(cmd) = cmd {
+                    self.load_variables(cmd);
                 }
                 // make sure we redraw since now more variable data is available
                 self.invalidate_draw_commands();
@@ -2747,6 +2816,131 @@ impl SystemState {
             | Message::CloseSplitFieldDialog
             | Message::ExtractSplitField { .. }) => {
                 self.handle_split_field_message(msg);
+            }
+
+            Message::SetActiveScopeFromWave(container_idx, scope_opt) => {
+                match container_idx {
+                    None => {
+                        if let Some(waves) = self.user.waves.as_mut() {
+                            waves.active_scope = scope_opt;
+                        }
+                        self.user.active_secondary_wave_idx = None;
+                    }
+                    Some(idx) => {
+                        if let Some(secondary) = self.user.secondary_waves.get_mut(idx) {
+                            secondary.active_scope = scope_opt;
+                        }
+                        self.user.active_secondary_wave_idx = Some(idx);
+                    }
+                }
+            }
+
+            Message::ShowRenameScopeDialog(container_idx, scope) => {
+                let container_key = match container_idx {
+                    None => "primary".to_string(),
+                    Some(i) => format!("secondary_{i}"),
+                };
+                let scope_path = scope.strs.join(".");
+                let current_name = scope.name();
+                let display_name = self
+                    .user
+                    .scope_display_names
+                    .get(&format!("{container_key}|{scope_path}"))
+                    .cloned()
+                    .unwrap_or(current_name);
+                self.user.renaming_scope = Some((container_key, scope_path, display_name));
+            }
+
+            Message::UpdateRenameScopeText(text) => {
+                if let Some((_, _, ref mut name)) = self.user.renaming_scope {
+                    *name = text;
+                }
+            }
+
+            Message::CommitScopeRename => {
+                if let Some((container_key, scope_path, new_name)) =
+                    self.user.renaming_scope.take()
+                {
+                    if !new_name.is_empty() {
+                        self.user
+                            .scope_display_names
+                            .insert(format!("{container_key}|{scope_path}"), new_name);
+                    }
+                }
+            }
+
+            Message::CancelScopeRename => {
+                self.user.renaming_scope = None;
+            }
+
+            Message::AddVariableFromSecondary(sec_idx, variable_ref) => {
+                let undo_msg = format!("Add variable {}", variable_ref.name);
+                self.save_current_canvas(undo_msg);
+
+                // Load the signal using the original VarId (Wellen-specific, efficient lookup)
+                let cmd = self
+                    .user
+                    .secondary_waves
+                    .get_mut(sec_idx)
+                    .and_then(|secondary| secondary.inner.as_waves_mut())
+                    .and_then(|wc| {
+                        wc.load_variables(std::iter::once(&variable_ref))
+                            .ok()
+                            .flatten()
+                    });
+
+                // Add the DisplayedItem to the primary display list, tagged with sec_idx.
+                // Store with VarId::None so any accidental primary-container lookup uses
+                // path-based search (fails gracefully) instead of crashing with out-of-bounds.
+                let mut stored_ref = variable_ref.clone();
+                stored_ref.id = crate::wave_container::VarId::None;
+
+                if let Some(waves) = self.user.waves.as_mut() {
+                    let target = waves
+                        .insert_position(waves.focused_item)
+                        .unwrap_or_else(|| waves.end_insert_position());
+
+                    // Get meta from the secondary container to build VariableInfo
+                    let meta = self
+                        .user
+                        .secondary_waves
+                        .get(sec_idx)
+                        .and_then(|s| s.inner.as_waves())
+                        .and_then(|wc| wc.variable_meta(&variable_ref).ok());
+
+                    if let Some(meta) = meta {
+                        let translator =
+                            crate::wave_data::variable_translator(None, &[], &self.translators, || {
+                                Ok(meta.clone())
+                            });
+                        let info = translator.variable_info(&meta).unwrap();
+
+                        let new_item = crate::displayed_item::DisplayedItem::Variable(
+                            crate::displayed_item::DisplayedVariable {
+                                variable_ref: stored_ref,
+                                info,
+                                color: None,
+                                background_color: None,
+                                display_name: variable_ref.name.clone(),
+                                display_name_type: waves.default_variable_name_type,
+                                manual_name: None,
+                                format: None,
+                                field_formats: vec![],
+                                height_scaling_factor: None,
+                                analog: None,
+                                secondary_container_idx: Some(sec_idx),
+                            },
+                        );
+                        waves.insert_item(new_item, Some(target), true);
+                        waves.compute_variable_display_names();
+                    }
+
+                    self.invalidate_draw_commands();
+                }
+
+                if let Some(cmd) = cmd {
+                    self.load_variables(cmd);
+                }
             }
         }
 

@@ -544,6 +544,20 @@ impl SystemState {
             .matching_variables(variables, wave_container, full_path)
             .clone()
     }
+
+    /// Same as `filtered_variables_unsorted` but uses the provided wave container instead of
+    /// the primary one. Used when filtering variables from a secondary container.
+    pub(crate) fn filtered_variables_unsorted_with_container(
+        &self,
+        variables: &[VariableRef],
+        wave_container: Option<&WaveContainer>,
+        full_path: bool,
+    ) -> Vec<VariableRef> {
+        self.user
+            .variable_filter
+            .matching_variables(variables, wave_container, full_path)
+            .clone()
+    }
 }
 
 fn get_variable_direction(

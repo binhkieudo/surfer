@@ -89,6 +89,10 @@ pub struct LoadSignalsResult {
 }
 
 impl LoadSignalsResult {
+    pub fn from_unique_id(&self) -> u64 {
+        self.from_unique_id
+    }
+
     #[must_use]
     pub fn local(
         source: SignalSource,
@@ -784,6 +788,15 @@ impl WellenContainer {
 
     /// Check if a signal is already loaded (data available)
     #[must_use]
+    pub fn unique_id(&self) -> u64 {
+        self.unique_id
+    }
+
+    /// Returns true if a `SignalsLoaded` result with this `from_unique_id` belongs to this container.
+    pub fn can_handle_signals(&self, from_unique_id: u64) -> bool {
+        self.unique_id == from_unique_id
+    }
+
     pub fn is_signal_loaded(&self, signal_ref: SignalRef) -> bool {
         self.signals.contains_key(&signal_ref)
     }

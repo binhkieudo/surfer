@@ -58,14 +58,13 @@ impl WaveData {
                                 .cloned()
                                 .unwrap_or_else(|| variable.variable_ref.name.clone()),
                         };
-                        if self.display_variable_indices {
+                        if self.display_variable_indices
+                            && variable.secondary_container_idx.is_none()
+                        {
                             let index = self
                                 .inner
                                 .as_waves()
-                                .unwrap()
-                                .variable_meta(&variable.variable_ref)
-                                .ok()
-                                .as_ref()
+                                .and_then(|wc| wc.variable_meta(&variable.variable_ref).ok())
                                 .and_then(|meta| meta.index)
                                 .map(|index| format!(" {index}"))
                                 .unwrap_or_default();

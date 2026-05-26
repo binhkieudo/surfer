@@ -182,6 +182,8 @@ pub enum LoadOptions {
     Clear,
     KeepAvailable,
     KeepAll,
+    /// Load as an additional secondary wave container alongside the existing primary
+    AddAsSecondary,
 }
 
 impl From<(OpenMode, bool)> for LoadOptions {
@@ -397,6 +399,18 @@ impl SystemState {
                                 // Request status
                                 get_server_status(sender.clone(), url.clone(), 0);
                                 // Request hierarchy
+                                if let Some(file_index) = file_index {
+                                    get_hierarchy_from_server(
+                                        sender.clone(),
+                                        url,
+                                        load_options,
+                                        file_index,
+                                    );
+                                }
+                            }
+                            LoadOptions::AddAsSecondary => {
+                                // For secondary loads from a server URL, treat like Clear
+                                info!("Loading secondary file from surfer server at: {url}");
                                 if let Some(file_index) = file_index {
                                     get_hierarchy_from_server(
                                         sender.clone(),
@@ -629,6 +643,7 @@ impl SystemState {
         cont: wellen::viewers::ReadBodyContinuation<R>,
         body_len: u64,
         hierarchy: Arc<wellen::Hierarchy>,
+        secondary_idx: Option<usize>,
     ) {
         let start = web_time::Instant::now();
         let sender = self.channels.msg_sender.clone();
@@ -645,7 +660,7 @@ impl SystemState {
                     .with_context(|| format!("Failed to parse body of wave file: {source}"));
 
                 let msg = match body_result {
-                    Ok(body) => Message::WaveBodyLoaded(start, source, BodyResult::Local(body)),
+                    Ok(body) => Message::WaveBodyLoaded(start, source, BodyResult::Local(body), secondary_idx),
                     Err(e) => Message::Error(e),
                 };
                 checked_send(&sender, msg);

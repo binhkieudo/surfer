@@ -493,6 +493,15 @@ impl WaveContainer {
         }
     }
 
+    /// Returns true if a `SignalsLoaded` result with this `from_unique_id` belongs to this container.
+    #[must_use]
+    pub fn can_handle_signals(&self, from_unique_id: u64) -> bool {
+        match self {
+            WaveContainer::Wellen(f) => f.can_handle_signals(from_unique_id),
+            _ => false,
+        }
+    }
+
     /// Check if a signal is already loaded (data available)
     #[must_use]
     pub fn is_signal_loaded(&self, signal_id: &SignalId) -> bool {

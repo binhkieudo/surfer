@@ -38,13 +38,18 @@ pub(crate) fn variable_analog_draw_commands(
     displayed_variable: &DisplayedVariable,
     display_id: DisplayedItemRef,
     waves: &WaveData,
+    secondary_waves: &[WaveData],
     translators: &TranslatorList,
     view_width: f32,
     viewport_idx: usize,
 ) -> Option<VariableDrawCommands> {
     let render_mode = displayed_variable.analog.as_ref()?;
 
-    let wave_container = waves.inner.as_waves()?;
+    let wave_container = displayed_variable
+        .secondary_container_idx
+        .and_then(|idx| secondary_waves.get(idx))
+        .and_then(|w| w.inner.as_waves())
+        .or_else(|| waves.inner.as_waves())?;
     let displayed_field_ref: DisplayedFieldRef = display_id.into();
     let translator = waves.variable_translator(&displayed_field_ref, translators);
     let viewport = &waves.viewports[viewport_idx];

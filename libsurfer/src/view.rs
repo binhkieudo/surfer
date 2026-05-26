@@ -382,6 +382,10 @@ impl SystemState {
             crate::split_field::draw_split_field_dialog(sf_state, ui, &mut msgs);
         }
 
+        if self.user.renaming_scope.is_some() {
+            self.draw_rename_scope_dialog(ui, &mut msgs);
+        }
+
         if self
             .user
             .show_menu
@@ -1176,8 +1180,16 @@ impl SystemState {
                         if meta.is_some() {
                             variable_tooltip_text(meta, &field.root)
                         } else {
-                            let wave_container = user_waves.inner.as_waves().unwrap();
-                            let meta = wave_container.variable_meta(&field.root).ok();
+                            // Route to correct container for secondary variables
+                            let wc = if let DisplayedItem::Variable(dv) = displayed_item {
+                                dv.secondary_container_idx
+                                    .and_then(|idx| self.user.secondary_waves.get(idx))
+                                    .and_then(|sw| sw.inner.as_waves())
+                                    .or_else(|| user_waves.inner.as_waves())
+                            } else {
+                                user_waves.inner.as_waves()
+                            };
+                            let meta = wc.and_then(|wc| wc.variable_meta(&field.root).ok());
                             variable_tooltip_text(meta.as_ref(), &field.root)
                         }
                     } else {
@@ -2102,19 +2114,21 @@ impl SystemState {
         };
 
         let variable = &displayed_variable.variable_ref;
-        let meta = waves
-            .inner
-            .as_waves()
-            .unwrap()
-            .variable_meta(variable)
-            .ok()?;
+        let wave_container = if let Some(idx) = displayed_variable.secondary_container_idx {
+            self.user
+                .secondary_waves
+                .get(idx)
+                .and_then(|sw| sw.inner.as_waves())
+        } else {
+            waves.inner.as_waves()
+        }?;
+        let meta = wave_container.variable_meta(variable).ok()?;
         let translator = waves.variable_translator_with_meta(
             &displayed_field_ref.without_field(),
             &self.translators,
             &meta,
         );
 
-        let wave_container = waves.inner.as_waves().unwrap();
         let query_result = wave_container
             .query_variable(variable, ucursor)
             .ok()

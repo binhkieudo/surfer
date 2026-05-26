@@ -99,6 +99,9 @@ pub struct SystemState {
     pub(crate) char_to_add_to_prompt: RefCell<Option<char>>,
     // This item works with the expand scope feature to determine what hierarchys to open
     pub scope_ref_to_expand: RefCell<Option<ScopeExpandType>>,
+    /// Tracks which secondary container (by index) is currently being drawn in the scope panel.
+    /// None = primary container, Some(i) = secondary_waves[i].
+    pub(crate) current_scope_container_idx: RefCell<Option<usize>>,
 
     pub(crate) time_widget: RefCell<TimeInputState>,
     pub(crate) time_edit_focused: bool,
@@ -177,6 +180,7 @@ impl SystemState {
             items_to_expand: RefCell::new(vec![]),
             char_to_add_to_prompt: RefCell::new(None),
             scope_ref_to_expand: RefCell::new(None),
+            current_scope_container_idx: RefCell::new(None),
             surver_selected_file: RefCell::new(None),
             surver_load_options: RefCell::new(LoadOptions::Clear),
             expand_parameter_section: false,

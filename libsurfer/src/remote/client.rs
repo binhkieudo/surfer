@@ -290,7 +290,7 @@ pub fn get_time_table_from_server(sender: Sender<Message>, server: String, file_
             .with_context(|| format!("Failed to retrieve time table from remote server {server}"));
 
         let msg = match res {
-            Ok(table) => Message::WaveBodyLoaded(start, source, BodyResult::Remote(table, server)),
+            Ok(table) => Message::WaveBodyLoaded(start, source, BodyResult::Remote(table, server), None),
             Err(e) => Message::Error(e),
         };
         checked_send(&sender, msg);
